@@ -422,7 +422,17 @@ td.t{text-align:right;font-variant-numeric:tabular-nums}
 /* HUD touches */
 #msg{font-weight:400;font-style:normal;transform:skewX(-10deg);text-shadow:5px 5px 0 #d6332a,8px 8px 0 rgba(0,0,0,.45)}
 #sub{font-weight:400;font-style:normal;text-shadow:0 3px 0 #000}
-#retire{border-radius:12px;font-weight:400;letter-spacing:1px}
+#retire{border-radius:14px;font-weight:400;letter-spacing:1px;display:flex;flex-direction:column;align-items:center;min-width:132px;padding:6px 20px 4px;box-shadow:0 4px 0 rgba(0,0,0,.45)}
+#retire small{font-size:13px;letter-spacing:2px;opacity:.92}
+#retire b{font-size:46px;font-weight:400;line-height:1;transform:skewX(-10deg)}
+#retire.fin{background:#ffd400;color:#111}
+@media (max-width:520px){#hud #retire,#hud.team #retire{top:132px}#retire{min-width:100px;padding:4px 14px 3px}#retire small{font-size:11px;letter-spacing:1px}#retire b{font-size:34px}}
+/* podium result */
+#result.pod.rui.panel{background:none}
+#result.pod.pside .card.rc{margin:auto 0 auto auto;width:min(520px,50%)}
+#result.pod.pbelow{padding-top:42vh}
+#result.pod .card.rc{animation:podIn .55s 1.6s both cubic-bezier(.2,.9,.3,1.1)}
+@keyframes podIn{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:none}}
 #taBox{border-radius:0 14px 14px 0}
 #rankList div{border-radius:6px}
 #pauseBtn{border-radius:12px;background:rgba(10,10,14,.6)}

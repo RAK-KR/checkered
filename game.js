@@ -104,6 +104,8 @@ const Snd = {
   wall(p) { const v = Math.min(1, p / 25); this.tone(110, 0.25, 'sine', 0.35 * v + 0.08, 50); this.burst(0.2, 900, 0.25 * v + 0.05); },
   lap() { this.tone(660, 0.14, 'square', 0.1); this.tone(990, 0.3, 'square', 0.1, null, 0.12); },
   finish() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.35, 'square', 0.1, null, i * 0.12)); },
+  tick(last) { this.tone(last ? 880 : 600, 0.12, 'square', last ? 0.11 : 0.08); },
+  fanfare() { [[523, 0, 0.16], [659, 0.15, 0.16], [784, 0.3, 0.16], [1047, 0.45, 0.3], [784, 0.75, 0.14], [1047, 0.9, 0.8]].forEach(([f, t, d]) => this.tone(f, d, 'square', 0.1, null, t)); },
   updateEngine(k, active) {
     if (!this.ok) return;
     const v = k ? Math.abs(k.v) : 0;
@@ -962,7 +964,7 @@ function enterRaceUI(ta) {
   $('pauseTitle').textContent = NET.inRace ? 'MENU' : 'PAUSE';
   $('btnAgain').textContent = NET.inRace ? '대기실로' : '다시 하기';
   $('btnMenu2').textContent = NET.inRace ? '방 나가기' : '메뉴';
-  state = 'race'; paused = false; resultTimer = -1;
+  state = 'race'; paused = false; resultTimer = -1; podiumHide();
   for (const k in held) held[k] = false;
   Object.assign(pin, Core.newInput()); flags.accel = flags.boost = flags.reset = false;
   $('menu').classList.add('hidden'); $('result').classList.add('hidden'); $('pause').classList.add('hidden');
@@ -975,7 +977,7 @@ function enterRaceUI(ta) {
 
 function toMenu() {
   if (NET.active) netCleanup();
-  state = 'menu'; paused = false; race = null; ghost = null; ghostRace = null;
+  state = 'menu'; paused = false; race = null; ghost = null; ghostRace = null; podiumHide();
   $('lobby').classList.add('hidden');
   $('hud').classList.add('hidden'); $('touch').classList.add('hidden');
   $('pause').classList.add('hidden'); $('result').classList.add('hidden');
@@ -1551,8 +1553,9 @@ function beginNetRace(m) {
     const tmp = Core.createRace({ track: m.track, laps: m.laps, solo: true, gridSlot: i });
     k.x = tmp.player.x; k.z = tmp.player.z; k.th = tmp.player.th; k.dist = tmp.player.dist; k.hidden = false;
     k.team = NET.teamRace ? (p.team === 1 ? 1 : 0) : null;
-    const view = makeKartMesh(k.color, k.name, null, k.team, playerSkinOf(p)); view.prevL = view.prevR = null;
-    NET.proxies.set(p.pid, { pid: p.pid, k, view, buf: [], finished: false, retired: false, left: false, finishTime: 0 });
+    const skin = playerSkinOf(p);
+    const view = makeKartMesh(k.color, k.name, null, k.team, skin); view.prevL = view.prevR = null;
+    NET.proxies.set(p.pid, { pid: p.pid, k, view, skin, buf: [], finished: false, retired: false, left: false, finishTime: 0 });
   });
   $('result').classList.add('hidden'); $('pause').classList.add('hidden'); netMenuOpen = false;
   for (const k in held) held[k] = false;
@@ -1667,15 +1670,24 @@ function netTick(dt) {
       NET.retireT = 0;
       if (!P.finished) {
         P.finished = true; P.retired = true;
-        showMsg('RETIRE', 2.5); showSub('', 0); resultTimer = 2.5;
+        showMsg('RETIRE', 2.5); showSub('', 0);
       }
     }
   }
 }
+// multiplayer race (bots or friends) is over for this screen: player done and nobody left on the clock
+function raceOver() {
+  if (!race || (race.solo && !NET.inRace)) return false;
+  const P = race.player;
+  if (!P.finished) return false;
+  if (NET.inRace) return NET.retireT === 0 || [...NET.proxies.values()].every(px => px.finished || px.left);
+  return race.ended;
+}
 function netOrder() {
   const P = race.player;
-  const list = [{ name: P.name, color: P.color, isPlayer: true, dist: P.dist, done: P.finished && !P.retired, time: P.finishTime, retired: P.retired, left: false, team: P.team }];
-  for (const px of NET.proxies.values()) list.push({ name: px.k.name, color: px.k.color, isPlayer: false, dist: px.k.dist, done: px.finished && !px.retired, time: px.finishTime, retired: px.retired, left: px.left, team: px.k.team });
+  const timeUp = NET.retireT === 0;   // countdown over: anyone still driving is out
+  const list = [{ name: P.name, color: P.color, isPlayer: true, dist: P.dist, done: P.finished && !P.retired, time: P.finishTime, retired: P.retired, left: false, team: P.team, skin: race.playerSkin }];
+  for (const px of NET.proxies.values()) list.push({ name: px.k.name, color: px.k.color, isPlayer: false, dist: px.k.dist, done: px.finished && !px.retired, time: px.finishTime, retired: px.retired || (timeUp && !px.finished), left: px.left, team: px.k.team, skin: px.skin });
   list.sort((a, b) => {
     if (a.left !== b.left) return a.left ? 1 : -1;
     if (a.done && b.done) return a.time - b.time;
@@ -1708,12 +1720,13 @@ function showResultsNet() {
     team: NET.teamRace ? P.team : null, teamWin: !!(tl && tl.win === P.team), stats: st, jumps: race.pJumps });
   $('btnAgain').textContent = '대기실로';
   $('btnMenu2').textContent = '방 나가기';
+  podiumShow(order.filter(o => o.done && !o.left).slice(0, 3).map(o => ({ name: o.name, color: o.color, skin: o.skin, team: NET.teamRace ? o.team : null, me: o.isPlayer })));
   $('result').classList.remove('hidden');
   Snd.stopBgm();
 }
 function backToLobby() {
   if (!NET.active) return toMenu();
-  NET.inRace = false; NET.retireT = -1;
+  NET.inRace = false; NET.retireT = -1; podiumHide();
   for (const px of NET.proxies.values()) if (px.view) disposeGroup(px.view.g);
   NET.proxies.clear();
   state = 'lobby'; race = null;
@@ -1762,6 +1775,118 @@ function statLine(st) {
     (st.drifts ? ' · 성공률 ' + Math.round(st.ib / st.drifts * 100) + '%' : '') +
     ' · 톡톡이 ' + (st.taps || 0) + '회 · 드래그 ' + (st.drags || 0) + '회 · 커팅 ' + (st.cuts || 0) + '회';
 }
+/* ---------- podium: top 3 karts on stands after the race ---------- */
+const POD_SPOTS = [{ x: 0, h: 2.4, ry: 0, col: '#ffd400' }, { x: -5, h: 1.6, ry: 0.3, col: '#c9d0d8' }, { x: 5, h: 1.0, ry: -0.3, col: '#d98b4f' }];
+const Podium = { scene: null, cam: null, karts: [], active: false, key: '', t: 0, conf: null, confV: null };
+function podiumInit() {
+  if (Podium.scene) return;
+  const s = new THREE.Scene();
+  s.background = canvasTex(4, 256, (c, w, h) => {
+    const g = c.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#06060a'); g.addColorStop(0.6, '#191923'); g.addColorStop(1, '#2b1a1a');
+    c.fillStyle = g; c.fillRect(0, 0, w, h);
+  });
+  s.add(new THREE.HemisphereLight(0xffffff, 0x2a2a36, 0.8));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.8); dl.position.set(6, 14, 12); s.add(dl);
+  // checkered floor
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(70, 64), new THREE.MeshLambertMaterial({
+    map: canvasTex(64, 64, (c, w, h) => { c.fillStyle = '#16161c'; c.fillRect(0, 0, w, h); c.fillStyle = '#22222b'; c.fillRect(0, 0, w / 2, h / 2); c.fillRect(w / 2, h / 2, w / 2, h / 2); }, 40, 40) }));
+  floor.rotation.x = -Math.PI / 2; s.add(floor);
+  // back banner
+  const ban = new THREE.Mesh(new THREE.PlaneGeometry(40, 10), new THREE.MeshBasicMaterial({ transparent: true, map: canvasTex(1024, 256, (c, w, h) => {
+    c.fillStyle = '#101016'; c.fillRect(0, 0, w, h);
+    for (let x = 0; x < w; x += 16) for (let y = 0; y < 32; y += 16) { c.fillStyle = ((x + y) / 16) % 2 ? '#111' : '#eee'; c.fillRect(x, y, 16, 16); }
+    c.fillStyle = '#ffd400'; c.fillRect(0, 32, w * 0.6, 6); c.fillStyle = '#ff3b30'; c.fillRect(w * 0.6, 32, w * 0.4, 6);
+    c.save(); c.translate(w / 2, h * 0.6); c.transform(1, 0, -0.2, 1, 0, 0);
+    c.font = '96px "Black Han Sans","Pretendard",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = '#7a1e19'; c.fillText('CHECKERED', 6, 6); c.fillStyle = '#9a9aa6'; c.fillText('CHECKERED', 0, 0);
+    c.restore();
+  }) }));
+  ban.position.set(0, 8.5, -16); s.add(ban);
+  // stands with numbers
+  POD_SPOTS.forEach((sp, i) => {
+    const side = new THREE.MeshLambertMaterial({ color: 0x25252e }), top = new THREE.MeshLambertMaterial({ color: 0x34343f });
+    const ch = Math.round(256 * sp.h / 4.6);
+    const front = new THREE.MeshLambertMaterial({ map: canvasTex(256, ch, (c, w, h) => {
+      c.fillStyle = '#25252e'; c.fillRect(0, 0, w, h);
+      c.fillStyle = sp.col; c.fillRect(0, 0, w, 10);
+      c.font = Math.round(Math.min(h * 0.72, 110)) + 'px "Black Han Sans","Pretendard",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.save(); c.translate(w / 2, h * 0.56); c.transform(1, 0, -0.2, 1, 0, 0);
+      c.fillStyle = 'rgba(0,0,0,.5)'; c.fillText(String(i + 1), 5, 5); c.fillStyle = sp.col; c.fillText(String(i + 1), 0, 0);
+      c.restore();
+    }) });
+    front.map.wrapS = front.map.wrapT = THREE.ClampToEdgeWrapping;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(4.6, sp.h, 4.8), [side, side, top, side, front, side]);
+    b.position.set(sp.x, sp.h / 2, 0); s.add(b);
+    // light beam from above
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 3.0, 16, 24, 1, true), new THREE.MeshBasicMaterial({ color: i ? 0xffffff : 0xffe680, transparent: true, opacity: i ? 0.05 : 0.09, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    beam.position.set(sp.x, sp.h + 8, 0); s.add(beam);
+  });
+  // confetti
+  const N = 320, pos = new Float32Array(N * 3), col = new Float32Array(N * 3), vel = new Float32Array(N * 2);
+  const pal = [0xffd400, 0xd6332a, 0x2fb8ff, 0xffffff, 0x3ee08a, 0xff7ac8].map(h => new THREE.Color(h));
+  for (let i = 0; i < N; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * 26; pos[i * 3 + 1] = Math.random() * 18; pos[i * 3 + 2] = (Math.random() - 0.5) * 12 + 1;
+    const c = pal[i % pal.length]; col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    vel[i * 2] = 1.6 + Math.random() * 1.8; vel[i * 2 + 1] = Math.random() * 6.28;
+  }
+  const cg = new THREE.BufferGeometry();
+  cg.setAttribute('position', new THREE.BufferAttribute(pos, 3)); cg.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  Podium.conf = new THREE.Points(cg, new THREE.PointsMaterial({ size: 0.3, vertexColors: true }));
+  Podium.confV = vel; s.add(Podium.conf);
+  Podium.scene = s;
+  Podium.cam = new THREE.PerspectiveCamera(38, 1, 0.1, 400);
+}
+// list: up to 3 of {name, color, skin, team, me}, already in finishing order
+function podiumShow(list) {
+  podiumInit();
+  $('result').classList.add('pod');
+  const key = JSON.stringify(list.map(o => [o.name, o.color, o.skin, o.team]));
+  if (Podium.active && key === Podium.key) return;
+  for (const v of Podium.karts) disposeGroup(v.g);
+  Podium.karts = list.map((o, i) => {
+    const sp = POD_SPOTS[i], v = makeKartMesh(o.color, o.name, Podium.scene, o.team, o.skin);
+    v.g.position.set(sp.x, sp.h, 0.3); v.g.rotation.y = sp.ry; v.place = i;
+    return v;
+  });
+  if (!Podium.active) { Podium.t = 0; Snd.fanfare(); }
+  Podium.key = key; Podium.active = true;
+}
+function podiumHide() {
+  Podium.active = false; Podium.key = '';
+  for (const v of Podium.karts) disposeGroup(v.g);
+  Podium.karts = [];
+  $('result').classList.remove('pod', 'pside', 'pbelow');
+}
+function podiumRender(dt) {
+  const W = innerWidth, H = innerHeight, cam = Podium.cam;
+  const side = W >= 820 && W > H * 1.1;   // result card on the right, otherwise below
+  const res = $('result'); res.classList.toggle('pside', side); res.classList.toggle('pbelow', !side);
+  const t = (Podium.t += dt);
+  // frame the stands inside the free area next to / above the card
+  const areaW = side ? W - Math.min(560, W * 0.5) : W, areaH = side ? H : H * 0.42;
+  cam.aspect = W / H;
+  cam.setViewOffset(W, H, side ? (W - areaW) / 2 : 0, side ? 0 : (H - areaH) / 2, W, H);
+  const tn = Math.tan(cam.fov * Math.PI / 360);
+  const d = Math.max(14, 17.5 * H / (2 * tn * 0.92 * areaW), 9 * H / (2 * tn * 0.88 * areaH));
+  const e = 1 - Math.pow(1 - Math.min(1, t / 1.8), 3);     // intro: start on the winner, pull back
+  const dd = d * (0.4 + 0.6 * e), ly = 4.3 - 1.4 * e, sw = Math.sin(t * 0.35) * 0.14 * e;
+  cam.position.set(Math.sin(sw) * dd, ly + 0.9 + dd * 0.1, Math.cos(sw) * dd);
+  cam.lookAt(0, ly, 0);
+  for (const v of Podium.karts) {
+    if (v.place === 0) v.body.position.y = t > 1.2 ? Math.abs(Math.sin(t * 4.2)) * 0.22 : 0;
+    else v.body.rotation.z = Math.sin(t * 2.4 + v.place) * 0.04;
+  }
+  const p = Podium.conf.geometry.attributes.position, a = p.array, vel = Podium.confV;
+  for (let i = 0; i < a.length / 3; i++) {
+    a[i * 3 + 1] -= vel[i * 2] * dt;
+    a[i * 3] += Math.sin(t * 2 + vel[i * 2 + 1]) * dt * 0.8;
+    if (a[i * 3 + 1] < 0) { a[i * 3 + 1] = 16 + Math.random() * 3; a[i * 3] = (Math.random() - 0.5) * 26; }
+  }
+  p.needsUpdate = true;
+  renderer.render(Podium.scene, cam);
+}
+
 /* ---------- results ---------- */
 function showResultsTA() {
   state = 'result';
@@ -1805,7 +1930,7 @@ function showResultsTA() {
 function showResults() {
   $('resTitle').style.color = ''; $('resTeam').classList.add('hidden'); if (!race.rewarded) $('resReward').innerHTML = '';
   if (NET.inRace) return showResultsNet();
-  if (race.solo) return showResultsTA();
+  if (race.solo) { podiumHide(); return showResultsTA(); }
   state = 'result';
   const P = race.player, tr = race.track;
   $('hud').classList.add('hidden'); $('touch').classList.add('hidden');
@@ -1836,6 +1961,7 @@ function showResults() {
   const tl = race.teams ? teamTally(race.order) : null;
   grantRewards({ mode: 'speed', rank: P.rank, retired: P.retired, diff: save.settings.diff, laps: race.laps, trackId: tr.def.id,
     team: race.teams ? P.team : null, teamWin: !!(tl && tl.win === P.team), stats: st, jumps: race.pJumps });
+  podiumShow(race.order.filter(k => k.finished && !k.retired).slice(0, 3).map(k => ({ name: k.name, color: k.color, skin: k.skin, team: race.teams ? k.team : null, me: k.isPlayer })));
   $('result').classList.remove('hidden');
   Snd.stopBgm();
 }
@@ -1876,10 +2002,11 @@ function handleEvents(r, isDemo) {
       case 'finish': if (me) {
         showMsg('FINISH', 2.5);
         if (r.solo && ghost) { const d = P.finishTime - ghost.time; showSub(Core.fmtTime(P.finishTime) + '   ' + fmtDelta(d), 2.5, d < 0 ? '#2fb8ff' : '#ff5a4a'); }
-        else showSub(P.rank + ' 위  ' + Core.fmtTime(P.finishTime), 2.5);
-        Snd.finish(); resultTimer = 3;
+        else showSub((NET.inRace ? (netOrder().find(o => o.isPlayer) || {}).rank : P.rank) + ' 위  ' + Core.fmtTime(P.finishTime), 2.5);
+        Snd.finish();
+        if (r.solo && !NET.inRace) resultTimer = 3;   // time attack: straight to results
       } break;
-      case 'retire': if (me) { showMsg('RETIRE', 2.5); showSub('', 0); resultTimer = 2.5; } break;
+      case 'retire': if (me) { showMsg('RETIRE', 2.5); showSub('', 0); } break;
     }
   }
   r.events.length = 0;
@@ -1912,10 +2039,16 @@ function updateHud(r) {
   $('gauge').classList.toggle('full', P.gauge >= 1);
   $('slot1').classList.toggle('on', P.items >= 1);
   $('slot2').classList.toggle('on', P.items >= 2);
+  // 10 s countdown after the first finisher (shown to everyone, also after you finish)
   const rtT = NET.inRace ? NET.retireT : r.retireT;
-  const showRet = rtT > 0 && !P.finished;
+  const showRet = (NET.inRace || r.karts.length > 1) && rtT > 0 && !raceOver();
   $('retire').classList.toggle('hidden', !showRet);
-  if (showRet) setText('retire', '리타이어까지 ' + Math.ceil(rtT));
+  if (showRet) {
+    const n = Math.ceil(rtT);
+    $('retire').classList.toggle('fin', P.finished);
+    setText('retire', '<small>' + (P.finished ? '경기 종료까지' : '리타이어까지') + '</small><b>' + n + '</b>');
+    if (r.lastTick !== n) { r.lastTick = n; Snd.tick(n <= 3); }
+  }
   $('wrong').classList.toggle('hidden', !(P.wrongWay && !P.finished));
   const bst = P.boostT > 0 || P.startT > 0;
   $('boostFx').style.opacity = bst ? 1 : 0;
@@ -2093,8 +2226,14 @@ function frame(now) {
       if (subT > 0) { subT -= dt; if (subT <= 0) $('sub').textContent = ''; }
       if (cueHold > 0) cueHold -= dt;
       if (techT > 0) { techT -= dt; if (techT <= 0) $('techTag').classList.remove('on'); }
-      if (resultTimer > 0) { resultTimer -= dt; if (resultTimer <= 0) showResults(); }
       if (NET.inRace) netTick(dt);
+      if (!race.endQueued && raceOver()) {
+        // everyone is in (or the 10 s countdown ran out): short pause, then the podium
+        race.endQueued = true;
+        const P = race.player, since = race.time - P.finishTime;
+        resultTimer = P.retired ? 2.4 : Math.min(3, Math.max(1.2, 3 - since));
+      }
+      if (resultTimer > 0) { resultTimer -= dt; if (resultTimer <= 0) showResults(); }
       updateHud(race);
       drawMini(race, race.player);
     } else if (state === 'result') {
@@ -2107,7 +2246,8 @@ function frame(now) {
     updateCamera(race.player, paused ? 0 : dt, false);
     Snd.updateEngine(race.player, state === 'race' && !paused);
   }
-  renderer.render(scene, camera);
+  if (Podium.active && state === 'result') podiumRender(dt);
+  else renderer.render(scene, camera);
 }
 
 
