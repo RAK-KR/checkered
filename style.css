@@ -422,11 +422,30 @@ td.t{text-align:right;font-variant-numeric:tabular-nums}
 /* HUD touches */
 #msg{font-weight:400;font-style:normal;transform:skewX(-10deg);text-shadow:5px 5px 0 #d6332a,8px 8px 0 rgba(0,0,0,.45)}
 #sub{font-weight:400;font-style:normal;text-shadow:0 3px 0 #000}
-#retire{border-radius:14px;font-weight:400;letter-spacing:1px;display:flex;flex-direction:column;align-items:center;min-width:132px;padding:6px 20px 4px;box-shadow:0 4px 0 rgba(0,0,0,.45)}
-#retire small{font-size:13px;letter-spacing:2px;opacity:.92}
-#retire b{font-size:46px;font-weight:400;line-height:1;transform:skewX(-10deg)}
-#retire.fin{background:#ffd400;color:#111}
-@media (max-width:520px){#hud #retire,#hud.team #retire{top:132px}#retire{min-width:100px;padding:4px 14px 3px}#retire small{font-size:11px;letter-spacing:1px}#retire b{font-size:34px}}
+/* end-of-race countdown: big number in the middle of the screen */
+#hud #retire,#hud.team #retire{top:42%;transform:translate(-50%,-50%);background:none;padding:0;display:flex;flex-direction:column;align-items:center;font-weight:400;letter-spacing:1px;pointer-events:none}
+#retire small{background:#d6332a;color:#fff;font-size:20px;letter-spacing:3px;padding:5px 18px;border-radius:12px;box-shadow:0 4px 0 rgba(0,0,0,.45)}
+#retire.fin small{background:#ffd400;color:#111}
+#retire b{display:block;font-size:210px;font-weight:400;line-height:1;margin-top:4px;color:#fff;transform:skewX(-10deg);text-shadow:7px 7px 0 #d6332a,12px 12px 0 rgba(0,0,0,.45);animation:cdPop .45s cubic-bezier(.2,.9,.3,1.25) both}
+#retire.hot b{color:#ffd400}
+@keyframes cdPop{0%{transform:skewX(-10deg) scale(1.8);opacity:0}100%{transform:skewX(-10deg) scale(1);opacity:1}}
+/* while the countdown runs, lift FINISH / LAP text above it */
+#hud.cd #msg{top:8%;font-size:70px}
+#hud.cd #sub{top:18.5%}
+@media (max-width:520px){
+  #hud #retire,#hud.team #retire{top:55%}
+  #retire small{font-size:15px;padding:4px 14px}
+  #retire b{font-size:140px}
+  #hud.cd #msg{top:29%;font-size:52px}
+  #hud.cd #sub{top:37%}
+}
+@media (max-height:520px){
+  #hud #retire,#hud.team #retire{top:65%}
+  #retire small{font-size:14px;padding:3px 12px}
+  #retire b{font-size:104px}
+  #hud.cd #msg{top:24%;font-size:44px}
+  #hud.cd #sub{top:39%;font-size:20px}
+}
 /* podium result */
 #result.pod.rui.panel{background:none}
 #result.pod.pside .card.rc{margin:auto 0 auto auto;width:min(520px,50%)}

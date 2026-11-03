@@ -2043,9 +2043,11 @@ function updateHud(r) {
   const rtT = NET.inRace ? NET.retireT : r.retireT;
   const showRet = (NET.inRace || r.karts.length > 1) && rtT > 0 && !raceOver();
   $('retire').classList.toggle('hidden', !showRet);
+  $('hud').classList.toggle('cd', showRet);
   if (showRet) {
     const n = Math.ceil(rtT);
     $('retire').classList.toggle('fin', P.finished);
+    $('retire').classList.toggle('hot', n <= 3);
     setText('retire', '<small>' + (P.finished ? '경기 종료까지' : '리타이어까지') + '</small><b>' + n + '</b>');
     if (r.lastTick !== n) { r.lastTick = n; Snd.tick(n <= 3); }
   }
