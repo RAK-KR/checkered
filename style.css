@@ -368,6 +368,11 @@ td.t{text-align:right;font-variant-numeric:tabular-nums}
 .reward .ach{color:#ffd400}
 .chk{display:flex;gap:8px;align-items:flex-start;margin-top:14px;font-size:13px;color:#b4b4c0;cursor:pointer}
 .chk input{margin-top:2px;accent-color:#ffd400;width:16px;height:16px}
+.orline{display:flex;align-items:center;gap:10px;color:#6e6e7a;font-size:12px;margin:18px 0 12px}
+.orline::before,.orline::after{content:'';flex:1;height:1px;background:#2c2c36}
+#acGuest{margin-top:0}
+#account input:not([type=checkbox]){width:100%}
+#acWelcome{margin:-2px 0 10px}
 .reccode{font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;font-weight:800;font-size:clamp(17px,5vw,26px);white-space:nowrap;letter-spacing:2px;color:#ffd400;background:#1d1d24;border:1px dashed #ffd400;border-radius:14px;padding:12px;text-align:center;margin:6px 0 10px;-webkit-user-select:all;user-select:all}
 .acinfo{background:#1d1d24;border:1px solid #2c2c36;border-radius:14px;padding:14px;margin-top:10px;line-height:1.8}
 .acinfo b{color:#ffd400}

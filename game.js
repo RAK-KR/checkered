@@ -2124,8 +2124,14 @@ function renderPbar() {
 }
 const PANELS = ['garage', 'account', 'ranking'];
 function openPanel(id) { for (const p of PANELS) $(p).classList.toggle('hidden', p !== id); $('menu').classList.add('hidden'); }
-function closePanel(id) { $(id).classList.add('hidden'); if (state === 'menu') $('menu').classList.remove('hidden'); if (id === 'garage') garageOpen = false; }
-function closeTopPanel() { for (const p of PANELS) if (!$(p).classList.contains('hidden')) { closePanel(p); return true; } return false; }
+function closePanel(id) {
+  $(id).classList.add('hidden'); if (state === 'menu') $('menu').classList.remove('hidden'); if (id === 'garage') garageOpen = false;
+  if (id === 'account' && gateMode) { gateMode = false; setGateUI(false); afterGate(); }
+}
+function closeTopPanel() {
+  for (const p of PANELS) if (!$(p).classList.contains('hidden')) { if (p === 'account' && gateMode) return true; closePanel(p); return true; }
+  return false;
+}
 
 /* ----- rewards ----- */
 function grantRewards(r) {
@@ -2225,12 +2231,31 @@ function renderGarage() {
 }
 
 /* ----- account ----- */
-let acMode = 'login';
+let acMode = 'login', gateMode = false;
+const LAST_USER_KEY = 'racing_last_user';
+function lastUser() { try { return localStorage.getItem(LAST_USER_KEY) || ''; } catch (e) { return ''; } }
+function rememberUser(u) { try { localStorage.setItem(LAST_USER_KEY, u); } catch (e) { } }
+function setGateUI(on) {
+  $('acGuestRow').classList.toggle('hidden', !on);
+  $('acCloseRow').classList.toggle('hidden', on);
+  $('acTitle').innerHTML = on ? '체커<span>드</span>' : 'ACCOUNT <span>계정</span>';
+  $('acWelcome').textContent = on ? '로그인하면 코인·스킨·기록이 서버에 저장되고 랭킹에 참여할 수 있어요.' : '';
+}
 function openAccount() {
   openPanel('account');
-  $('acRecShow').classList.add('hidden'); $('acCloseRow').classList.remove('hidden');
+  $('acRecShow').classList.add('hidden'); setGateUI(gateMode);
   renderAccount();
 }
+// shown on startup when the server is set up and nobody is logged in
+function openGate() {
+  gateMode = true;
+  const lu = lastUser();
+  acMode = lu ? 'login' : 'register';
+  $('acUser').value = lu;
+  openAccount();
+  setTimeout(() => { try { $(lu ? 'acPass' : 'acUser').focus(); } catch (e) { } }, 50);
+}
+function afterGate() { renderPbar(); renderMenu(); checkInvite(); }
 function renderAccount() {
   const on = !!Profile.user;
   $('acIn').classList.toggle('hidden', on || !Api.enabled);
@@ -2265,12 +2290,12 @@ async function submitAccount() {
   if (acMode !== 'login' && pw !== pw2) { msg.textContent = '비밀번호 확인이 달라요'; return; }
   btn.disabled = true; msg.style.color = ''; msg.textContent = '처리 중...';
   try {
-    if (acMode === 'login') { await Api.login(u, pw); msg.textContent = ''; closePanel('account'); }
+    if (acMode === 'login') { await Api.login(u, pw); rememberUser(u); msg.textContent = ''; closePanel('account'); }
     else if (acMode === 'register') {
-      const r = await Api.register(u, pw, $('acCarry').checked);
+      const r = await Api.register(u, pw, $('acCarry').checked); rememberUser(u);
       showRecovery(r.recovery);
     } else {
-      const r = await Api.recover(u, $('acRec').value, pw);
+      const r = await Api.recover(u, $('acRec').value, pw); rememberUser(u);
       showRecovery(r.recovery);
     }
     $('acPass').value = ''; $('acPass2').value = ''; $('acRec').value = '';
@@ -2279,7 +2304,7 @@ async function submitAccount() {
   renderPbar();
 }
 function showRecovery(code) {
-  $('acIn').classList.add('hidden'); $('acOut').classList.add('hidden'); $('acCloseRow').classList.add('hidden');
+  $('acIn').classList.add('hidden'); $('acOut').classList.add('hidden'); $('acCloseRow').classList.add('hidden'); $('acGuestRow').classList.add('hidden');
   $('acRecShow').classList.remove('hidden'); $('acRecCode').textContent = code; $('acMsg').textContent = '';
 }
 
@@ -2349,19 +2374,24 @@ Profile.onChange(() => { renderPbar(); if (garageOpen) renderGarage(); });
   if (!had && !Profile.user) { const c = save.settings.color | 0; if (c >= 0 && c < 8) Profile.data.equip.color = c; Profile.persist(); }
 })();
 renderPbar();
-Api.resume().then(() => { renderPbar(); });
+$('acGuest').onclick = () => closePanel('account');
+let startChecked = false;
+function startupGate() {
+  if (startChecked) return; startChecked = true;
+  if (Api.enabled && !Profile.user) openGate(); else afterGate();
+}
+Api.resume().then(() => { renderPbar(); startupGate(); }, () => startupGate());
 
 renderMenu();
 newDemo();
 requestAnimationFrame(frame);
 function checkInvite() {
   const m = location.hash.match(/join=([A-Za-z0-9]{5})/);
-  if (!m || NET.active || state === 'race' || state === 'result') return;
+  if (!m || gateMode || NET.active || state === 'race' || state === 'result') return;
   save.settings.mode = 'net'; persist(); renderMenu();
   openLobby();
   $('codeIn').value = m[1].toUpperCase();
   setStatus('초대받은 방입니다. 닉네임을 확인하고 참가를 눌러 주세요.');
 }
-checkInvite();
 window.addEventListener('hashchange', checkInvite);
 })();
