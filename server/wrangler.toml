@@ -1,0 +1,13 @@
+# (선택) 명령어(wrangler)로 배포할 때만 쓰는 설정 파일입니다.
+# 대시보드에서 worker.js 코드를 붙여 넣어 배포한다면 이 파일은 필요 없습니다.
+name = "checkered-server"
+main = "worker.js"
+compatibility_date = "2025-06-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://rak-kr.github.io"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "checkered-db"
+database_id = "여기에-D1-데이터베이스-ID를-넣으세요"
