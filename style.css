@@ -187,7 +187,7 @@ td.t{text-align:right;font-variant-numeric:tabular-nums}
 /* ---------- racing main menu ---------- */
 #menu.panel{align-items:flex-start;padding:16px 16px 28px;
   background:linear-gradient(180deg,rgba(6,6,10,.35) 0%,rgba(6,6,10,.72) 55%,rgba(6,6,10,.85) 100%)}
-#menu .logo,.rui .go,.rui .lbl em,#menu .trk b,.rui .seg .opt,.rui .ph,#msg,#sub,#retire,.rui td.r,.rui .rcode b{font-family:"Black Han Sans","Pretendard","Noto Sans KR",sans-serif}
+#menu .logo,.rui .go,.rui .lbl em,#menu .trk b,#mapPick .trk b,.rui .seg .opt,.rui .ph,#msg,#sub,#retire,.rui td.r,.rui .rcode b{font-family:"Black Han Sans","Pretendard","Noto Sans KR",sans-serif}
 #menu .mwrap{width:min(680px,100%);margin:auto;position:relative;z-index:1}
 #menu .hero{position:relative;text-align:center;padding:10px 0 14px}
 #menu .logo{display:inline-block;font-size:96px;line-height:1;font-weight:400;font-style:normal;letter-spacing:-1px;transform:skewX(-12deg);position:relative;
@@ -217,21 +217,21 @@ td.t{text-align:right;font-variant-numeric:tabular-nums}
 .rui .seg{background:#1e1e25;border-radius:16px;padding:5px;display:flex;gap:4px;border:1px solid #2c2c36}
 .rui .seg .opt{flex:1;background:transparent;border:0;border-radius:12px;padding:10px 6px;font-size:18px;font-weight:400;font-style:italic;color:#bdbdc8}
 .rui .seg .opt.sel{background:#ffd400;color:#111;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
-#menu .tracks{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-#menu .trk{border-radius:16px;padding:12px 10px 10px;text-align:center;background:#202028;border:2px solid #2c2c36;position:relative;overflow:hidden;min-width:0}
-#menu .trk::before{content:'';position:absolute;left:0;right:0;top:0;height:4px;background:var(--tc,#ffd400)}
-#menu .trk canvas{width:62px;height:62px;display:block;margin:2px auto 6px}
-#menu .trk b{font-size:17px;font-weight:400;font-style:italic;color:#fff;display:block}
-#menu .trk em{font-size:11.5px;color:#9393a0;line-height:1.35;margin-top:3px}
-#menu .trk i{font-size:12px;color:#ffd400;font-weight:700;margin-top:5px;font-style:italic}
-#menu .trk b u{background:#ff3b30;border-radius:6px;padding:1px 6px;font-size:10px;vertical-align:3px;font-family:"Pretendard",sans-serif;font-weight:800;font-style:normal}
-#menu .trk.sel,#menu .trk.sel:hover{background:#2a2817;border-color:#ffd400;color:#fff;box-shadow:0 0 0 1px #ffd400,0 6px 22px rgba(255,212,0,.18)}
-#menu .trk.sel::after{content:'SELECTED';position:absolute;right:-30px;top:12px;transform:rotate(45deg);background:#ffd400;color:#111;font-size:8px;font-weight:900;letter-spacing:1px;padding:2px 30px}
-#menu .concepts{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;margin-bottom:10px;padding-bottom:4px;scrollbar-width:none;touch-action:pan-x}
-#menu .concepts::-webkit-scrollbar{display:none}
-#menu .concepts .opt{flex:none;padding:6px 13px;font-size:14px;border-radius:999px}
-#menu .concepts .opt i{font-style:normal;color:#8d8d99;margin-left:4px;font-size:12px}
-#menu .concepts .opt.sel i{color:#5a4a00}
+#menu .tracks,#mapPick .tracks{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+#menu .trk,#mapPick .trk{border-radius:16px;padding:12px 10px 10px;text-align:center;background:#202028;border:2px solid #2c2c36;position:relative;overflow:hidden;min-width:0}
+#menu .trk::before,#mapPick .trk::before{content:'';position:absolute;left:0;right:0;top:0;height:4px;background:var(--tc,#ffd400)}
+#menu .trk canvas,#mapPick .trk canvas{width:62px;height:62px;display:block;margin:2px auto 6px}
+#menu .trk b,#mapPick .trk b{font-size:17px;font-weight:400;font-style:italic;color:#fff;display:block}
+#menu .trk em,#mapPick .trk em{font-size:11.5px;color:#9393a0;line-height:1.35;margin-top:3px}
+#menu .trk i,#mapPick .trk i{font-size:12px;color:#ffd400;font-weight:700;margin-top:5px;font-style:italic}
+#menu .trk b u,#mapPick .trk b u{background:#ff3b30;border-radius:6px;padding:1px 6px;font-size:10px;vertical-align:3px;font-family:"Pretendard",sans-serif;font-weight:800;font-style:normal}
+#menu .trk.sel,#menu .trk.sel:hover,#mapPick .trk.sel,#mapPick .trk.sel:hover{background:#2a2817;border-color:#ffd400;color:#fff;box-shadow:0 0 0 1px #ffd400,0 6px 22px rgba(255,212,0,.18)}
+#menu .trk.sel::after,#mapPick .trk.sel::after{content:'SELECTED';position:absolute;right:-30px;top:12px;transform:rotate(45deg);background:#ffd400;color:#111;font-size:8px;font-weight:900;letter-spacing:1px;padding:2px 30px}
+#menu .concepts,#mapPick .concepts{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;margin-bottom:10px;padding-bottom:4px;scrollbar-width:none;touch-action:pan-x}
+#menu .concepts::-webkit-scrollbar,#mapPick .concepts::-webkit-scrollbar{display:none}
+#menu .concepts .opt,#mapPick .concepts .opt{flex:none;padding:6px 13px;font-size:14px;border-radius:999px}
+#menu .concepts .opt i,#mapPick .concepts .opt i{font-style:normal;color:#8d8d99;margin-left:4px;font-size:12px}
+#menu .concepts .opt.sel i,#mapPick .concepts .opt.sel i{color:#5a4a00}
 #menu .duo{display:flex;gap:18px;flex-wrap:wrap}
 #menu .duo>div{flex:1 1 220px}
 #menu .duo .row{margin-top:0}
@@ -263,7 +263,7 @@ td.t{text-align:right;font-variant-numeric:tabular-nums}
 @media (max-width:560px){
   #menu .logo{font-size:68px}
   #menu .streaks i{right:120px}
-  #menu .tracks{grid-template-columns:repeat(2,1fr)}
+  #menu .tracks,#mapPick .tracks{grid-template-columns:repeat(2,1fr)}
   .rui .card.rc{padding:26px 16px 18px}
   #menu .seg .opt{font-size:16px}
   #menu .sub{letter-spacing:5px;font-size:12px}
@@ -371,6 +371,13 @@ td.t{text-align:right;font-variant-numeric:tabular-nums}
 .orline{display:flex;align-items:center;gap:10px;color:#6e6e7a;font-size:12px;margin:18px 0 12px}
 .orline::before,.orline::after{content:'';flex:1;height:1px;background:#2c2c36}
 #acGuest{margin-top:0}
+.rui .go.mapbtn{margin-top:8px;font-size:17px;padding:10px}
+#roomLaps{margin-top:12px}
+.rui:not(#menu) .card.rc.mpcard{width:min(1000px,100%)}
+.trackBox.host{cursor:pointer}
+.trackBox.host:hover{outline:2px solid #ffd400}
+#mapPick .tracks{grid-template-columns:repeat(4,1fr);max-height:58vh;overflow-y:auto;touch-action:pan-y;padding:4px 2px}
+@media (max-width:760px){#mapPick .tracks{grid-template-columns:repeat(2,1fr)}}
 #account input:not([type=checkbox]){width:100%}
 #acWelcome{margin:-2px 0 10px}
 .reccode{font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;font-weight:800;font-size:clamp(17px,5vw,26px);white-space:nowrap;letter-spacing:2px;color:#ffd400;background:#1d1d24;border:1px dashed #ffd400;border-radius:14px;padding:12px;text-align:center;margin:6px 0 10px;-webkit-user-select:all;user-select:all}

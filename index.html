@@ -74,8 +74,8 @@
       <div class="msec"><div class="lbl"><em>MODE</em>모드</div><div class="opts seg" id="optMode"></div><div class="sm" id="modeNote"></div></div>
       <div class="msec row" id="rowTeam"><div class="lbl"><em>MATCH</em>경기 방식</div><div class="opts" id="optTeam"></div><div class="sm" id="teamNote2"></div></div>
       <div class="msec row" id="rowGhost"><div class="lbl"><em>GHOST</em>상대 고스트</div><div class="opts" id="optGhost"></div><div class="sm" id="ghostNote"></div></div>
-      <div class="msec"><div class="lbl"><em>TRACK</em>트랙</div><div class="opts concepts" id="optConcept"></div><div class="opts tracks" id="optTrack"></div></div>
-      <div class="msec duo">
+      <div class="msec" id="rowTrack"><div class="lbl"><em>TRACK</em>트랙</div><div class="opts concepts" id="optConcept"></div><div class="opts tracks" id="optTrack"></div></div>
+      <div class="msec duo" id="rowLapsDiff">
         <div><div class="lbl"><em>LAPS</em>바퀴 수</div><div class="opts" id="optLaps"></div></div>
         <div class="row" id="rowDiff"><div class="lbl" id="lblDiff">난이도</div><div class="opts" id="optDiff"></div></div>
       </div>
@@ -117,7 +117,7 @@
       <div class="row"><div class="lbl"><em>JOIN</em>방 코드로 참가</div>
         <div class="opts"><input id="codeIn" class="code" maxlength="5" placeholder="ABCDE" autocomplete="off" autocapitalize="characters"><button class="opt" id="btnJoin">참가</button></div>
       </div>
-      <div class="sm">방장이 고른 코스로 경기합니다. 지금 메뉴에서 고른 코스·바퀴 수는 방을 만들 때 기본값이 됩니다.</div>
+      <div class="sm">맵과 바퀴 수는 방에 들어간 뒤 방장이 고릅니다.</div>
     </div>
     <div id="lbRoom" class="hidden">
       <div class="roomHead">
@@ -128,10 +128,14 @@
       <div class="roomBody">
         <div class="slots" id="slots"></div>
         <div class="side">
-          <div class="trackBox"><canvas id="trackPrev" width="160" height="160"></canvas>
+          <div class="trackBox" id="trackBoxBtn"><canvas id="trackPrev" width="160" height="160"></canvas>
             <div><small id="rtMode">스피드 개인전</small><b id="rtName"></b><em id="rtLaps"></em></div></div>
           <div class="opts small" id="roomMode" style="margin-bottom:6px"></div>
-          <div class="opts small" id="roomTrack"></div>
+          <div id="roomTrack">
+            <button class="go mapbtn" id="btnMapPick">맵 변경</button>
+            <div class="opts small" id="roomLaps"></div>
+          </div>
+          <div class="sm" id="roomTrackNote"></div>
           <div id="teamRow"><div class="lbl" style="margin-top:14px"><em>TEAM</em>내 팀</div><div class="opts" id="myTeam"></div></div>
           <div class="lbl" style="margin-top:14px"><em>KART</em>내 카트 색상</div><div class="sm" style="margin:-4px 0 8px">다른 사람이 쓰는 색은 고를 수 없어요</div>
           <div class="opts" id="myColor"></div>
@@ -143,6 +147,16 @@
     </div>
     <div class="sm" id="lbStatus" style="margin-top:14px"></div>
     <div class="btns"><button class="go sec" id="btnLeave">나가기</button></div>
+  </div>
+</div>
+
+<div id="mapPick" class="panel rui hidden">
+  <div class="card rc mpcard">
+    <h1 class="ph">MAP <span>맵 선택</span></h1>
+    <div class="sm">방장만 고를 수 있어요. 고르면 방 안의 모두에게 바로 바뀝니다.</div>
+    <div class="opts concepts" id="mpConcept" style="margin-top:14px"></div>
+    <div class="opts tracks" id="mpTracks"></div>
+    <div class="btns"><button class="go sec" id="mpClose">닫기</button></div>
   </div>
 </div>
 

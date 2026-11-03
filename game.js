@@ -1045,6 +1045,8 @@ function renderMenu() {
     : s.mode === 'net' ? '방을 만들고 방 코드(또는 초대 링크)를 친구에게 보내면 최대 8명이 함께 달립니다. 카트 색상은 대기실에서 고릅니다. 인터넷 연결이 필요합니다.'
     : '봇 5대와 함께 순위를 겨룹니다.';
   $('rowDiff').classList.toggle('hidden', s.mode === 'net');
+  $('rowTrack').classList.toggle('hidden', s.mode === 'net');
+  $('rowLapsDiff').classList.toggle('hidden', s.mode === 'net');
   $('rowTeam').classList.toggle('hidden', s.mode !== 'speed');
   const otm = $('optTeam'); otm.innerHTML = '';
   [['개인전', false], ['팀전', true]].forEach(([tx, v]) => {
@@ -1187,18 +1189,14 @@ function renderRoom() {
   drawTrackThumb($('trackPrev'), NET.track);
   $('rtName').textContent = Core.TRACK_DEFS[NET.track].name;
   $('rtLaps').textContent = NET.laps + ' LAP';
-  const rt = $('roomTrack'); rt.innerHTML = '';
-  rt.classList.toggle('hidden', !NET.host);
-  if (NET.host) {
-    Core.TRACK_DEFS.forEach((d, i) => {
-      const b = document.createElement('button'); b.className = 'opt' + (NET.track === i ? ' sel' : ''); b.textContent = d.name;
-      b.onclick = () => { NET.track = i; broadcastLobby(); }; rt.appendChild(b);
-    });
-    [1, 2, 3, 5].forEach(n => {
-      const b = document.createElement('button'); b.className = 'opt' + (NET.laps === n ? ' sel' : ''); b.textContent = n + ' LAP';
-      b.onclick = () => { NET.laps = n; broadcastLobby(); }; rt.appendChild(b);
-    });
-  }
+  $('roomTrack').classList.toggle('hidden', !NET.host);
+  $('trackBoxBtn').classList.toggle('host', NET.host);
+  $('roomTrackNote').textContent = NET.host ? '' : '방장이 맵과 바퀴 수를 고르고 있어요.';
+  const rl = $('roomLaps'); rl.innerHTML = '';
+  if (NET.host) [1, 2, 3, 5].forEach(n => {
+    const b = document.createElement('button'); b.className = 'opt' + (NET.laps === n ? ' sel' : ''); b.textContent = n + ' LAP';
+    b.onclick = () => { if (NET.laps !== n) { NET.laps = n; sysChat('바퀴 수가 ' + n + ' LAP으로 바뀌었습니다.'); broadcastLobby(); } }; rl.appendChild(b);
+  });
   $('rtMode').textContent = NET.teamMode ? '스피드 팀전' : '스피드 개인전';
   const rm = $('roomMode'); rm.innerHTML = '';
   rm.classList.toggle('hidden', !NET.host);
@@ -1509,7 +1507,8 @@ function netClosed(msg) {
   openLobby();
   setStatus(msg, true);
 }
-function leaveRoom() { netCleanup(); toMenu(); }
+function leaveRoom() {
+  $('mapPick').classList.add('hidden'); netCleanup(); toMenu(); }
 
 /* --- race --- */
 function hostStart() {
@@ -1531,6 +1530,7 @@ function proxyKart(p) {
 function beginNetRace(m) {
   if (!NET.active) return;
   for (const p of NET.players) if (p.pid !== 0) p.ready = false;
+  $('mapPick').classList.add('hidden');
   NET.teamRace = !!m.teamMode;
   NET.inRace = true; NET.retireT = -1; NET.sentFin = false; NET.fins.clear(); NET.sendAcc = 0; NET.raceLaps = m.laps;
   if (!world || world.ti !== m.track) buildWorld(m.track);
@@ -2122,7 +2122,7 @@ function renderPbar() {
   $('coinNum').textContent = Profile.data.coins.toLocaleString();
   $('gCoins').textContent = Profile.data.coins.toLocaleString();
 }
-const PANELS = ['garage', 'account', 'ranking'];
+const PANELS = ['garage', 'account', 'ranking', 'mapPick'];
 function openPanel(id) { for (const p of PANELS) $(p).classList.toggle('hidden', p !== id); $('menu').classList.add('hidden'); }
 function closePanel(id) {
   $(id).classList.add('hidden'); if (state === 'menu') $('menu').classList.remove('hidden'); if (id === 'garage') garageOpen = false;
@@ -2229,6 +2229,39 @@ function renderGarage() {
     renderGarage();
   };
 }
+
+/* ----- room map picker (host) ----- */
+let mpConcept = 'all';
+function openMapPick() {
+  if (!NET.active || !NET.host) return;
+  for (const p of PANELS) $(p).classList.toggle('hidden', p !== 'mapPick');
+  renderMapPick();
+}
+function renderMapPick() {
+  const oc = $('mpConcept'); oc.innerHTML = '';
+  Core.CONCEPTS.forEach(([id, label]) => {
+    const n = id === 'all' ? Core.TRACK_DEFS.length : Core.TRACK_DEFS.filter(d => d.concept === id).length;
+    if (!n) return;
+    const b = document.createElement('button'); b.className = 'opt' + (mpConcept === id ? ' sel' : ''); b.innerHTML = label + '<i>' + n + '</i>';
+    b.onclick = () => { mpConcept = id; renderMapPick(); }; oc.appendChild(b);
+  });
+  const box = $('mpTracks'); box.innerHTML = '';
+  Core.TRACK_DEFS.forEach((d, i) => {
+    if (mpConcept !== 'all' && d.concept !== mpConcept) return;
+    const b = document.createElement('button'); b.className = 'opt trk' + (NET.track === i ? ' sel' : '');
+    b.innerHTML = `<canvas width="128" height="128"></canvas><b>${d.name}${d.hard ? ' <u>HARD</u>' : ''}</b><em>${d.desc}</em>`;
+    b.style.setProperty('--tc', TRACK_TINT[d.id] || '#ffd400');
+    drawTrackThumb(b.querySelector('canvas'), i, '#ffffff', 9, TRACK_TINT[d.id] || '#ffd400');
+    b.onclick = () => {
+      if (NET.track !== i) { NET.track = i; sysChat('맵이 ' + d.name + '(으)로 바뀌었습니다.'); broadcastLobby(); }
+      $('mapPick').classList.add('hidden');
+    };
+    box.appendChild(b);
+  });
+}
+$('btnMapPick').onclick = openMapPick;
+$('trackBoxBtn').onclick = () => { if (NET.host) openMapPick(); };
+$('mpClose').onclick = () => $('mapPick').classList.add('hidden');
 
 /* ----- account ----- */
 let acMode = 'login', gateMode = false;
