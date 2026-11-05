@@ -11,6 +11,14 @@ try {
   const s = JSON.parse(localStorage.getItem(SAVE_KEY));
   if (s) { save.best = s.best || {}; Object.assign(save.settings, s.settings || {}); }
 } catch (e) { }
+// speed race and time attack used to keep separate records ('ta_' prefix): merge them into one
+for (const k of Object.keys(save.best)) {
+  if (k.indexOf('ta_') !== 0) continue;
+  const u = k.slice(3), v = save.best[k];
+  if (typeof v === 'number' && (save.best[u] == null || v < save.best[u])) save.best[u] = v;
+  delete save.best[k];
+}
+if (save.settings.diff > 3 || save.settings.diff < 0) save.settings.diff = 1;
 if (save.settings.sfx === false) save.settings.volSfx = 0;
 if (save.settings.bgm === false) save.settings.volBgm = 0;
 delete save.settings.sfx; delete save.settings.bgm;
@@ -788,8 +796,28 @@ function tasGhost(ti, laps) {
 // one-way (point-to-point) courses are always a single run
 function effLaps(ti, laps) { return Core.getTrack(ti).p2p ? 1 : laps; }
 function lapTxt(ti, laps) { return Core.getTrack(ti).p2p ? '편도' : laps + ' LAP'; }
+// personal best for a track & laps, shared by speed races and time attack (saves the ghost when there is one)
+function recordBest(ti, laps, P, r) {
+  const id = Core.TRACK_DEFS[ti].id, key = id + '_' + laps, lk = id + '_lap';
+  const mine = loadGhost(ti, laps);
+  let prev = save.best[key];
+  if (mine && (prev == null || mine.time < prev)) prev = mine.time;
+  const isPB = prev == null || P.finishTime < prev;
+  let ghostOk = null;
+  if (isPB) {
+    save.best[key] = P.finishTime;
+    if (r.rec) ghostOk = storeGhost(ti, laps, { time: P.finishTime, lapTimes: P.lapTimes.slice(), data: r.rec.data, color: P.color, skin: r.playerSkin });
+  }
+  const bl = Math.min(...P.lapTimes), lapPB = !save.best[lk] || bl < save.best[lk];
+  if (lapPB) save.best[lk] = bl;
+  persist();
+  let text = isPB ? (prev == null ? '첫 기록 등록' : '최고 기록 갱신 ' + fmtDelta(P.finishTime - prev)) + (ghostOk === false ? ' · 고스트 저장 실패(저장 공간 부족)' : ghostOk ? ' · 고스트 저장됨' : '')
+    : '내 최고 기록 ' + Core.fmtTime(prev) + '까지 ' + fmtDelta(P.finishTime - prev);
+  if (lapPB && !r.track.p2p) text += ' · 베스트 랩 ' + Core.fmtTime(bl);
+  return { isPB, prev, text };
+}
 function pickGhost(ti, laps, diff) {
-  const mine = loadGhost(ti, laps), def = defaultGhost(ti, laps, diff);
+  const mine = loadGhost(ti, laps), tg = diff === 3 ? tasGhost(ti, laps) : null, def = tg || defaultGhost(ti, laps, Math.min(diff, 2));
   const g = mine && mine.time <= def.time ? mine : def;
   return { g, mine };
 }
@@ -1013,7 +1041,8 @@ function startRace() {
   const s = save.settings;
   if (!world || world.ti !== s.track) buildWorld(s.track);
   const ta = s.mode === 'ta';
-  race = Core.createRace({ track: s.track, laps: s.laps, diff: s.diff, seed: (Math.random() * 1e9) | 0, playerHex: Profile.colorHex(Profile.data.equip.color), solo: ta, record: ta, teams: !ta && s.teamMode });
+  const tasPlan = s.diff === 3 && tasAvail(s.track) ? Core.unpackTasPlan(window.TAS_PLANS[Core.TRACK_DEFS[s.track].id]) : null;
+  race = Core.createRace({ track: s.track, laps: s.laps, diff: s.diff, seed: (Math.random() * 1e9) | 0, playerHex: Profile.colorHex(Profile.data.equip.color), solo: ta, record: true, teams: !ta && s.teamMode, tasPlan });
   race.playerSkin = Profile.skin(); race.pJumps = 0;
   demo = null;
   setupRace(race);
@@ -1089,9 +1118,10 @@ function renderMenu() {
   Core.TRACK_DEFS.forEach((d, i) => {
     if (cc !== 'all' && d.concept !== cc) return;
     const b = document.createElement('button'); b.className = 'opt trk' + (s.track === i ? ' sel' : '');
-    const pre = s.mode === 'ta' ? 'ta_' : '';
-    const rec = save.best[pre + d.id + '_' + effLaps(i, s.laps)];
-    const lap = save.best[pre + d.id + '_lap'];
+    const mg = loadGhost(i, effLaps(i, s.laps));
+    let rec = save.best[d.id + '_' + effLaps(i, s.laps)];
+    if (mg && (rec == null || mg.time < rec)) rec = mg.time;
+    const lap = save.best[d.id + '_lap'];
     b.innerHTML = `<canvas width="128" height="128"></canvas><b>${d.name}${d.hard ? ' <u>HARD</u>' : ''}</b><em>${d.desc}</em><i>${rec ? 'BEST ' + Core.fmtTime(rec) : 'BEST --'}</i>`;
     b.style.setProperty('--tc', TRACK_TINT[d.id] || '#f4eef8');
     drawTrackThumb(b.querySelector('canvas'), i, '#ffffff', 9, TRACK_TINT[d.id] || '#ffd400');
@@ -1186,7 +1216,7 @@ renderToggles();
 
 
 /* ---------- friend battle (P2P) ---------- */
-const NET_VER = 8, PEER_PREFIX = 'rkr-race-v1-', CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', MAX_P = 8;
+const NET_VER = 9, PEER_PREFIX = 'rkr-race-v1-', CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', MAX_P = 8;
 const NET = { active: false, peer: null, host: false, conns: new Map(), conn: null, pid: 0, players: [], code: '',
   track: 0, laps: 3, nextPid: 1, inRace: false, proxies: new Map(), sendAcc: 0, pingAcc: 0, rtt: new Map(),
   retireT: -1, fins: new Map(), sentFin: false, raceLaps: 3 };
@@ -1976,10 +2006,8 @@ function showResultsTA() {
   const P = race.player, tr = race.track, ti = save.settings.track;
   $('hud').classList.add('hidden'); $('touch').classList.add('hidden');
   $('boostFx').style.opacity = 0; $('ibFx').style.opacity = 0;
-  const key = 'ta_' + tr.def.id + '_' + race.laps, lk = 'ta_' + tr.def.id + '_lap';
-  const prevMine = ghostMine ? ghostMine.time : null;
-  const isPB = prevMine == null || P.finishTime < prevMine;
   const beatGhost = P.finishTime < ghost.time;
+  const best = recordBest(ti, race.laps, P, race), isPB = best.isPB;
   $('resTitle').textContent = isPB ? 'NEW RECORD' : 'TIME ATTACK';
   $('resSub').textContent = tr.def.name + ' · ' + lapTxt(ti, race.laps) + ' · 타임어택 · 상대: ' + (ghost.isTas ? 'TAS' : ghost.isDefault ? '기본 고스트(' + race.diff.name + ')' : ghost.owner ? ghost.owner + ' (랭킹)' : '내 최고 기록');
   let html = '', cum = 0;
@@ -1991,29 +2019,21 @@ function showResultsTA() {
   const dt = P.finishTime - ghost.time;
   html += `<tr class="me"><td class="r">≡</td><td class="t">${Core.fmtTime(P.finishTime)}</td><td class="t" style="color:${dt < 0 ? '#2fb8ff' : '#ff5a4a'}">${fmtDelta(dt)}</td></tr>`;
   $('resTable').innerHTML = html;
-  let rec = '';
-  if (isPB) {
-    save.best[key] = P.finishTime;
-    const ok = storeGhost(ti, race.laps, { time: P.finishTime, lapTimes: P.lapTimes.slice(), data: race.rec.data, color: P.color, skin: race.playerSkin });
-    rec = (prevMine == null ? '첫 기록 등록' : '최고 기록 갱신 ' + fmtDelta(P.finishTime - prevMine)) + (ok ? ' · 고스트 저장됨' : ' · 고스트 저장 실패(저장 공간 부족)');
-  } else rec = '내 최고 기록 ' + Core.fmtTime(prevMine) + '까지 ' + fmtDelta(P.finishTime - prevMine);
+  let rec = best.text;
   if (ghost.isDefault) rec += beatGhost ? ' · 기본 고스트 격파!' : '';
   const tg = tasGhost(ti, race.laps);
   if (tg) rec += P.finishTime < tg.time ? ' · TAS 격파!!' : ' · TAS 대비 ' + fmtDelta(P.finishTime - tg.time) + ' (' + (tg.time / P.finishTime * 100).toFixed(1) + '%)';
-  const bl = Math.min(...P.lapTimes);
-  if (!save.best[lk] || bl < save.best[lk]) { save.best[lk] = bl; if (!tr.p2p) rec += ' · 베스트 랩 ' + Core.fmtTime(bl); }
-  persist();
   $('resRec').textContent = rec;
   const st = P.stats;
   $('resStats').textContent = statLine(st);
   grantRewards({ mode: 'ta', retired: false, laps: race.laps, trackId: tr.def.id, pb: isPB, beatDefault: ghost.isDefault && beatGhost,
-    beatDefaultHard: ghost.isDefault && beatGhost && save.settings.diff === 2, stats: st, jumps: race.pJumps });
+    beatDefaultHard: beatGhost && ((ghost.isDefault && save.settings.diff === 2) || !!ghost.isTas), stats: st, jumps: race.pJumps });
   submitRecord(tr.def.id, race.laps, P, race);
   $('result').classList.remove('hidden');
   Snd.stopBgm();
 }
 function showResults() {
-  $('resTitle').style.color = ''; $('resTeam').classList.add('hidden'); if (!race.rewarded) $('resReward').innerHTML = '';
+  $('resTitle').style.color = ''; $('resTeam').classList.add('hidden'); $('teamNote').textContent = ''; if (!race.rewarded) $('resReward').innerHTML = '';
   if (NET.inRace) return showResultsNet();
   if (race.solo) { podiumHide(); return showResultsTA(); }
   state = 'result';
@@ -2034,13 +2054,13 @@ function showResults() {
   if (race.teams) renderTeamResult(teamTally(race.order), P.team);
   let rec = '';
   if (!P.retired && P.finished) {
-    const key = tr.def.id + '_' + race.laps;
-    if (!save.best[key] || P.finishTime < save.best[key]) { save.best[key] = P.finishTime; rec = '신기록! '; }
-    const bl = Math.min(...P.lapTimes), lk = tr.def.id + '_lap';
-    if (!save.best[lk] || bl < save.best[lk]) { save.best[lk] = bl; if (!tr.p2p) rec += '베스트 랩 갱신 ' + Core.fmtTime(bl); }
-    persist();
+    const best = recordBest(save.settings.track, race.laps, P, race);
+    rec = best.text;
+    const tg = tasGhost(save.settings.track, race.laps);
+    if (tg) rec += P.finishTime < tg.time ? ' · TAS 격파!!' : ' · TAS 대비 ' + fmtDelta(P.finishTime - tg.time);
   }
   $('resRec').textContent = rec;
+  if (!P.retired && P.finished) submitRecord(tr.def.id, race.laps, P, race);
   const st = P.stats;
   $('resStats').textContent = statLine(st);
   const tl = race.teams ? teamTally(race.order) : null;
@@ -2604,10 +2624,9 @@ function renderGhostRow() {
   const cg = chosenGhost && chosenGhost.trackId === tid && chosenGhost.laps === el ? chosenGhost : null;
   const mk = (label, sel, fn) => { const b = document.createElement('button'); b.className = 'opt' + (sel ? ' sel' : ''); b.textContent = label; b.onclick = fn; og.appendChild(b); };
   mk('자동 (내 기록·기본 고스트)', !cg, () => { chosenGhost = null; renderMenu(); });
-  if (tasAvail(s.track)) mk('TAS', !!cg && !!cg.isTas, () => { const g = tasGhost(s.track, el); if (g) { chosenGhost = g; renderMenu(); } });
-  if (Api.enabled) mk('랭킹에서 고르기', !!cg && !cg.isTas, () => openRanking());
-  $('ghostNote').textContent = cg ? (cg.isTas ? '상대: TAS ' + Core.fmtTime(cg.time) + ' (컴퓨터가 계산한 최적 주행)' : '상대: ' + cg.owner + ' ' + Core.fmtTime(cg.time) + ' (랭킹 고스트)') :
-    (Api.enabled ? 'TAS나 랭킹에서 다른 사람의 고스트를 골라 겨룰 수 있어요.' : tasAvail(s.track) ? 'TAS를 고르면 컴퓨터가 계산한 최적 주행과 겨룹니다.' : '');
+  if (Api.enabled) mk('랭킹에서 고르기', !!cg, () => openRanking());
+  $('ghostNote').textContent = cg ? '상대: ' + cg.owner + ' ' + Core.fmtTime(cg.time) + ' (랭킹 고스트)' :
+    (Api.enabled ? '랭킹에서 다른 사람의 고스트를 골라 겨룰 수 있어요.' : '');
 }
 async function openRanking() {
   const s = save.settings, d = Core.TRACK_DEFS[s.track];

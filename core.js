@@ -10,7 +10,7 @@ const C = {
   STEER: 2.3, GRIP_K: 12, DRIFT_K: 3.2, REC_T: 0.4, GAUGE_K: 0.016,
   TAP_T: 0.16, TAP_GAUGE: 0.018, DRAG_T: 0.45, DRAG_ACC: 4.5, DRAG_REC: 0.8,
   KMH: 4.4, COUNTDOWN: 3.2, RETIRE: 10,
-  GRAV: 32, SLOPE_K: 20, KICK_LEN: 14, KICK_RISE: 1.6, PAD_T: 0.9
+  GRAV: 32, SLOPE_K: 20, EDGE_OUT: 1.15, EDGE_T: 0.1, KICK_LEN: 14, KICK_RISE: 1.6, PAD_T: 0.9
 };
 C.LIMIT = C.WALL - C.KART_R;
 
@@ -273,7 +273,8 @@ const BOT_NAMES = ['민준', '서연', '하늘', '도윤', '지우', '태오', '
 const DIFF = [
   { name: '쉬움', mult: 0.88, ib: 0.35, drift: 1.05, start: 0.2 },
   { name: '보통', mult: 0.945, ib: 0.6, drift: 0.95, start: 0.45 },
-  { name: '어려움', mult: 0.99, ib: 0.85, drift: 0.9, start: 0.75 }
+  { name: '어려움', mult: 0.99, ib: 0.85, drift: 0.9, start: 0.75 },
+  { name: 'TAS', mult: 1, ib: 1, drift: 0.9, start: 1, tas: true }   // bots drive the optimized TAS plan
 ];
 
 function newInput() { return { accel: 0, brake: 0, steer: 0, drift: false, boostEdge: false, accelEdge: false, reset: false }; }
@@ -310,7 +311,8 @@ function createRace(opts) {
   const race = {
     track: tr, laps: tr.p2p ? 1 : opts.laps || 3, karts: [], events: [], rng, diff,
     time: -C.COUNTDOWN, state: 'countdown', retireT: -1, ended: false, player: null, endTime: 0,
-    solo: !!opts.solo, autopilot: !!opts.autopilot, rec: opts.record ? { acc: 0, data: [], done: false } : null
+    solo: !!opts.solo, autopilot: !!opts.autopilot, rec: opts.record ? { acc: 0, data: [], done: false } : null,
+    tasPlan: diff.tas && opts.tasPlan ? opts.tasPlan : null
   };
   const pc = opts.playerColor || 0;
   const botColors = KART_COLORS.filter((c, i) => i !== pc);
@@ -332,6 +334,7 @@ function createRace(opts) {
     };
     k.mult = isP ? 1 : diff.mult + k.ai.jitter;
     k.tech = isP && !opts.autopilot;
+    if (!isP && race.tasPlan) { k.aiTas = true; k.tech = true; k.mult = 1; k.ai.startChance = 1; }
     if (isP) race.player = k;
     race.karts.push(k);
   }
@@ -700,7 +703,11 @@ function verticalStep(k, pr, prevS, dt, race) {
   if (!tr.hasElev) { k.y = 0; return; }
   const gH = heightAt(tr, pr.s);
   const gap = tr.gapMask[pr.i] === 1;
-  const offEdge = Math.abs(pr.lat) > tr.wallA[pr.i] + 0.4;
+  // off the edge = kart centre clearly past the visible edge; on the ground it also has to stay out there for a moment,
+  // so hanging a wheel over on an inside line doesn't drop you
+  const offRaw = Math.abs(pr.lat) > tr.wallA[pr.i] + C.EDGE_OUT;
+  if (!offRaw) k.offT = 0; else if (!k.air) k.offT = (k.offT || 0) + dt;
+  const offEdge = offRaw && (k.air || k.offT > C.EDGE_T);
   const overRoad = !gap && !offEdge;
   if (!k.air) {
     for (const g of tr.gaps) {
@@ -781,9 +788,9 @@ function stepRace(race, dt, playerInput) {
       }
       if (inp.reset) { respawn(race, k); inp.reset = false; }
     } else {
-      inp = aiInput(k, race, dt);
+      inp = k.aiTas && !k.finished ? tasInput(k, race, dt) : aiInput(k, race, dt);
     }
-    if (!k.isPlayer && !k.finished) {
+    if (!k.isPlayer && !k.finished && !k.aiTas) {
       let gap = P ? P.dist - k.dist : 0;
       const rb = P ? clamp(gap / 200, -1, 1) * 0.035 : 0;
       k.mult = race.diff.mult + k.ai.jitter + rb;
@@ -947,7 +954,7 @@ function tasInput(k, race, dt) {
 // packed plan (as stored in tas.js) -> arrays
 function unpackTasPlan(pk) {
   const bits = (str, n) => { const a = []; for (let i = 0; i < n; i++) a.push(str[i] === '1' ? 1 : -1); return a; };
-  const n = pk.lane.length, sc = (a, d) => a.map(x => x / d);
+  const n = pk.lane.length, sc = (a, d) => pk.raw ? a.slice() : a.map(x => x / d);   // raw: stored exactly as optimized
   return { sp: pk.sp, lane: sc(pk.lane, 1000), thr: sc(pk.thr, 1000), need: sc(pk.need, 1000), hold: sc(pk.hold, 1000),
     chain: bits(pk.chain, n), drag: bits(pk.drag, n), boost: bits(pk.boost, n), lift: pk.lift ? sc(pk.lift, 1000) : null, g: pk.g };
 }

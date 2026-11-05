@@ -183,10 +183,10 @@ const P = {
     } else {
       const table = [60, 45, 35, 25, 20, 15, 12, 10];
       const base = r.retired ? 5 : (table[r.rank - 1] || 10);
-      const diffMul = r.mode === 'net' ? 1.2 : [0.7, 1, 1.4][r.diff == null ? 1 : r.diff];
+      const diffMul = r.mode === 'net' ? 1.2 : [0.7, 1, 1.4, 1.8][r.diff == null ? 1 : r.diff] || 1;
       coins += base * diffMul * lapMul;
       if (r.teamWin) coins += r.mode === 'net' ? 30 : 20;
-      if (r.mode === 'speed' && r.rank === 1 && !r.retired) { st.botWins++; if (r.diff === 2) st.hardWins++; }
+      if (r.mode === 'speed' && r.rank === 1 && !r.retired) { st.botWins++; if (r.diff >= 2) st.hardWins++; }
       if (r.mode === 'net' && ((r.team == null && r.rank === 1 && !r.retired) || r.teamWin)) st.netWins++;
       if (r.teamWin) st.teamWins++;
     }
