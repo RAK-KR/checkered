@@ -771,6 +771,69 @@ function makeDefaultGhost(track, laps, diff) {
   return prepGhost({ time: P.finishTime, lapTimes: P.lapTimes.slice(), data: race.rec.data, stride: GS, color: 0xffffff, isDefault: true });
 }
 
+/* ---------- TAS: closed-loop driver following an optimized per-knot plan ---------- */
+function planAt(arr, sp, L, s) {
+  const n = arr.length;
+  const f = (((s % L) + L) % L) / sp;
+  const i = Math.floor(f) % n, j = (i + 1) % n, w = f - Math.floor(f);
+  return arr[i] + (arr[j] - arr[i]) * w;
+}
+function tasInput(k, race, dt) {
+  const P = race.tasPlan, tr = race.track, L = tr.L, inp = k.input, G = P.g;
+  inp.boostEdge = false; inp.accelEdge = false; inp.reset = false;
+  const v = k.v, s = k.s, n = P.lane.length, j = Math.floor((((s % L) + L) % L) / P.sp) % n;
+  let nearRamp = false;
+  for (const g of tr.gaps) { let ds = g.lip - s; if (ds < -L / 2) ds += L; if (ds > -2 && ds < 70) nearRamp = true; }
+  const la = G.la0 + Math.max(0, v) * G.laK;
+  let lane = planAt(P.lane, P.sp, L, s + la) * tr.ws;
+  if (nearRamp) lane *= 0.3;
+  const tgt = pointAt(tr, s + la, lane);
+  const desired = Math.atan2(tgt.x - k.x, tgt.z - k.z);
+  const ref = k.drift === 1 ? k.phi : k.th;
+  const e = wrapA(desired - ref);
+  let steer = clamp(-e * G.kp, -1, 1), drift = false;
+  const near = turnBetween(tr, s, s + 18 + Math.max(0, v) * 0.5);
+  if (k.drift === 1) {
+    const need = -e * k.driftDir > P.need[j];
+    drift = k.driftTime < 0.17 || (need && k.driftTime < P.hold[j]);
+    if (drift) steer = clamp(-e * G.kd, -1, 1);
+  } else if (k.drift === 2) {
+    if (P.drag[j] > 0 && v > 20) steer = -k.driftDir;
+  } else if (!nearRamp && !k.air && v > 18) {
+    if (Math.abs(near) > P.thr[j] && Math.abs(e) > 0.04) { drift = true; steer = near > 0 ? -1 : 1; }
+    else if (P.chain[j] > 0 && k.ibT <= G.chainT && !k.ibOpen) {
+      drift = true; steer = e > 0 ? -1 : (e < 0 ? 1 : (k.driftDir || 1));
+    }
+  }
+  if (k.ibOpen && !k.ibUsed && k.ibPhase >= C.IB_PERF) inp.accelEdge = true;
+  if (k.items > 0 && k.boostT <= 0 && P.boost[j] > 0) inp.boostEdge = true;
+  inp.steer = steer; inp.drift = drift; inp.accel = 1; inp.brake = 0;
+  return inp;
+}
+// packed plan (as stored in tas.js) -> arrays
+function unpackTasPlan(pk) {
+  const bits = (str, n) => { const a = []; for (let i = 0; i < n; i++) a.push(str[i] === '1' ? 1 : -1); return a; };
+  const n = pk.lane.length, sc = (a, d) => a.map(x => x / d);
+  return { sp: pk.sp, lane: sc(pk.lane, 1000), thr: sc(pk.thr, 1000), need: sc(pk.need, 1000), hold: sc(pk.hold, 1000),
+    chain: bits(pk.chain, n), drag: bits(pk.drag, n), boost: bits(pk.boost, n), g: pk.g };
+}
+function runTas(track, laps, plan, record) {
+  const race = createRace({ track, laps, solo: true, seed: 1, record });
+  const P = race.player; P.mult = 1; P.tech = true; P.startArmed = true;
+  race.tasPlan = plan;
+  const idle = newInput(); idle.accel = 1;
+  while (!P.finished && race.time < 600) {
+    stepRace(race, 1 / 120, race.state === 'racing' ? tasInput(P, race, 1 / 120) : idle);
+    race.events.length = 0;
+  }
+  return race;
+}
+function makeTasGhost(track, laps, packed) {
+  const race = runTas(track, laps, unpackTasPlan(packed), true), P = race.player;
+  if (!P.finished) return null;
+  return prepGhost({ time: P.finishTime, lapTimes: P.lapTimes.slice(), data: race.rec.data, stride: GS, isTas: true });
+}
+
 function fmtTime(t) {
   if (t == null || !isFinite(t) || t < 0) t = 0;
   const m = Math.floor(t / 60), s = t - m * 60;
@@ -781,6 +844,7 @@ root.Core = {
   C, TRACK_DEFS, KART_COLORS, DIFF, mulberry32, wrapA, clamp, getTrack, pointAt, angAt, project, turnBetween,
   CONCEPTS: [['all', '전체'], ['forest', '숲'], ['desert', '사막'], ['ice', '얼음'], ['sea', '바다'], ['city', '도시'], ['volcano', '화산'], ['space', '우주']],
   buildTrack, clearTrackCache: () => { for (const k in trackCache) delete trackCache[k]; }, createRace, stepRace, updateKart, aiInput, newInput, velOf, setVel, fmtTime, heightAt, gapAt,
-  GHOST_DT, GHOST_STRIDE: GS, prepGhost, ghostAt, ghostTimeAtDist, makeDefaultGhost
+  GHOST_DT, GHOST_STRIDE: GS, prepGhost, ghostAt, ghostTimeAtDist, makeDefaultGhost,
+  tasInput, unpackTasPlan, runTas, makeTasGhost
 };
 })(typeof window !== 'undefined' ? window : globalThis);

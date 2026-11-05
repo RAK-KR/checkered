@@ -725,6 +725,20 @@ function defaultGhost(ti, laps, diff) {
   const k = ti + '_' + laps + '_' + diff;
   return defGhosts[k] || (defGhosts[k] = Core.makeDefaultGhost(ti, laps, diff));
 }
+/* TAS ghosts: replayed from optimized plans in tas.js (generated once per track/laps, then cached) */
+const tasCache = {}, TAS_SKIN = { body: 'proto', wheel: 'neon', helmet: 'visor' }, TAS_COLOR = 0x8f6bff;
+function tasAvail(ti) { return !!(window.TAS_PLANS && window.TAS_PLANS[Core.TRACK_DEFS[ti].id]); }
+function tasGhost(ti, laps) {
+  if (!tasAvail(ti)) return null;
+  const key = ti + '_' + laps;
+  if (!(key in tasCache)) {
+    let g = null;
+    try { g = Core.makeTasGhost(ti, laps, window.TAS_PLANS[Core.TRACK_DEFS[ti].id]); } catch (e) { console.warn('TAS', e); }
+    if (g) Object.assign(g, { color: TAS_COLOR, skin: TAS_SKIN, owner: 'TAS', trackId: Core.TRACK_DEFS[ti].id, laps });
+    tasCache[key] = g;
+  }
+  return tasCache[key];
+}
 function pickGhost(ti, laps, diff) {
   const mine = loadGhost(ti, laps), def = defaultGhost(ti, laps, diff);
   const g = mine && mine.time <= def.time ? mine : def;
@@ -1898,7 +1912,7 @@ function showResultsTA() {
   const isPB = prevMine == null || P.finishTime < prevMine;
   const beatGhost = P.finishTime < ghost.time;
   $('resTitle').textContent = isPB ? 'NEW RECORD' : 'TIME ATTACK';
-  $('resSub').textContent = tr.def.name + ' · ' + race.laps + ' LAP · 타임어택 · 상대: ' + (ghost.isDefault ? '기본 고스트(' + race.diff.name + ')' : ghost.owner ? ghost.owner + ' (랭킹)' : '내 최고 기록');
+  $('resSub').textContent = tr.def.name + ' · ' + race.laps + ' LAP · 타임어택 · 상대: ' + (ghost.isTas ? 'TAS' : ghost.isDefault ? '기본 고스트(' + race.diff.name + ')' : ghost.owner ? ghost.owner + ' (랭킹)' : '내 최고 기록');
   let html = '', cum = 0;
   P.lapTimes.forEach((t, i) => {
     cum += t;
@@ -1915,6 +1929,8 @@ function showResultsTA() {
     rec = (prevMine == null ? '첫 기록 등록' : '최고 기록 갱신 ' + fmtDelta(P.finishTime - prevMine)) + (ok ? ' · 고스트 저장됨' : ' · 고스트 저장 실패(저장 공간 부족)');
   } else rec = '내 최고 기록 ' + Core.fmtTime(prevMine) + '까지 ' + fmtDelta(P.finishTime - prevMine);
   if (ghost.isDefault) rec += beatGhost ? ' · 기본 고스트 격파!' : '';
+  const tg = tasGhost(ti, race.laps);
+  if (tg) rec += P.finishTime < tg.time ? ' · TAS 격파!!' : ' · TAS 대비 ' + fmtDelta(P.finishTime - tg.time) + ' (' + (tg.time / P.finishTime * 100).toFixed(1) + '%)';
   const bl = Math.min(...P.lapTimes);
   if (!save.best[lk] || bl < save.best[lk]) { save.best[lk] = bl; rec += ' · 베스트 랩 ' + Core.fmtTime(bl); }
   persist();
@@ -2057,13 +2073,17 @@ function updateHud(r) {
   $('ibFx').style.opacity = !bst && P.ibT > 0 ? (P.ibPerfect ? 1 : 0.6) : 0;
   updateCue(P);
   if (r.solo && ghost) {
-    setText('taLbl', ghost.isDefault ? '기본 고스트 · ' + r.diff.name : ghost.owner ? ghost.owner + ' · 랭킹 고스트' : '내 최고 기록');
+    setText('taLbl', ghost.isTas ? 'TAS 고스트' : ghost.isDefault ? '기본 고스트 · ' + r.diff.name : ghost.owner ? ghost.owner + ' · 랭킹 고스트' : '내 최고 기록');
     setText('taBest', Core.fmtTime(ghost.time));
     let d = null;
     if (P.finished) d = P.finishTime - ghost.time;
     else if (r.state === 'racing' && P.dist > 5) { const gt = Core.ghostTimeAtDist(ghost, P.dist); d = gt == null ? null : r.time - gt; }
     const el = $('taDelta');
-    if (d == null) { setText('taDelta', r.state === 'racing' && !P.finished ? '+' + (r.time - ghost.time).toFixed(3) : '±0.000'); el.className = 'num' + (r.state === 'racing' && !P.finished && r.time > ghost.time ? ' slow' : ''); }
+    if (d == null) {
+      // ghost already finished while we're still driving: show how far over its time we are
+      const over = r.state === 'racing' && !P.finished && r.time > ghost.time;
+      setText('taDelta', over ? '+' + (r.time - ghost.time).toFixed(3) : '±0.000'); el.className = 'num' + (over ? ' slow' : '');
+    }
     else { setText('taDelta', fmtDelta(d)); el.className = 'num ' + (d < 0 ? 'fast' : 'slow'); }
   }
 }
@@ -2494,9 +2514,10 @@ function renderGhostRow() {
   const cg = chosenGhost && chosenGhost.trackId === tid && chosenGhost.laps === s.laps ? chosenGhost : null;
   const mk = (label, sel, fn) => { const b = document.createElement('button'); b.className = 'opt' + (sel ? ' sel' : ''); b.textContent = label; b.onclick = fn; og.appendChild(b); };
   mk('자동 (내 기록·기본 고스트)', !cg, () => { chosenGhost = null; renderMenu(); });
-  if (Api.enabled) mk('랭킹에서 고르기', !!cg, () => openRanking());
-  $('ghostNote').textContent = cg ? '상대: ' + cg.owner + ' ' + Core.fmtTime(cg.time) + ' (랭킹 고스트)' :
-    (Api.enabled ? '랭킹에서 다른 사람의 고스트를 골라 겨룰 수 있어요.' : '');
+  if (tasAvail(s.track)) mk('TAS', !!cg && !!cg.isTas, () => { const g = tasGhost(s.track, s.laps); if (g) { chosenGhost = g; renderMenu(); } });
+  if (Api.enabled) mk('랭킹에서 고르기', !!cg && !cg.isTas, () => openRanking());
+  $('ghostNote').textContent = cg ? (cg.isTas ? '상대: TAS ' + Core.fmtTime(cg.time) + ' (컴퓨터가 계산한 최적 주행)' : '상대: ' + cg.owner + ' ' + Core.fmtTime(cg.time) + ' (랭킹 고스트)') :
+    (Api.enabled ? 'TAS나 랭킹에서 다른 사람의 고스트를 골라 겨룰 수 있어요.' : tasAvail(s.track) ? 'TAS를 고르면 컴퓨터가 계산한 최적 주행과 겨룹니다.' : '');
 }
 async function openRanking() {
   const s = save.settings, d = Core.TRACK_DEFS[s.track];
