@@ -816,10 +816,12 @@ function recordBest(ti, laps, P, r) {
   if (lapPB && !r.track.p2p) text += ' · 베스트 랩 ' + Core.fmtTime(bl);
   return { isPB, prev, text };
 }
+// opponent ghost exactly as chosen: my best, the TAS, or the default ghost of that level
 function pickGhost(ti, laps, diff) {
-  const mine = loadGhost(ti, laps), tg = diff === 3 ? tasGhost(ti, laps) : null, def = tg || defaultGhost(ti, laps, Math.min(diff, 2));
-  const g = mine && mine.time <= def.time ? mine : def;
-  return { g, mine };
+  const mine = loadGhost(ti, laps);
+  if (save.settings.taGhost === 'mine' && mine) return { g: mine, mine };
+  const tg = diff === 3 ? tasGhost(ti, laps) : null;
+  return { g: tg || defaultGhost(ti, laps, Math.min(diff, 2)), mine };
 }
 function makeGhostMesh(color, skin, label) {
   const v = makeKartMesh(color, label || '고스트', null, null, skin);
@@ -1135,18 +1137,26 @@ function renderMenu() {
     b.onclick = () => { s.laps = n; persist(); renderMenu(); }; ol.appendChild(b);
   });
   const od = $('optDiff'); od.innerHTML = '';
+  const taMine = s.mode === 'ta' && s.taGhost === 'mine';
   Core.DIFF.forEach((d, i) => {
-    const b = document.createElement('button'); b.className = 'opt' + (s.diff === i ? ' sel' : ''); b.textContent = d.name;
-    b.onclick = () => { s.diff = i; persist(); renderMenu(); }; od.appendChild(b);
+    const b = document.createElement('button'); b.className = 'opt' + (s.diff === i && !taMine ? ' sel' : ''); b.textContent = d.name;
+    b.onclick = () => { s.diff = i; s.taGhost = null; persist(); renderMenu(); }; od.appendChild(b);
   });
+  if (s.mode === 'ta') {
+    const mg = loadGhost(s.track, effLaps(s.track, s.laps));
+    const b = document.createElement('button'); b.className = 'opt' + (taMine ? ' sel' : '');
+    b.textContent = mg ? '내 기록 ' + Core.fmtTime(mg.time) : '내 기록 (없음)';
+    b.disabled = !mg;
+    b.onclick = () => { s.taGhost = 'mine'; persist(); renderMenu(); }; od.appendChild(b);
+  }
   const om = $('optMode'); om.innerHTML = '';
   [['스피드전', 'speed'], ['타임어택', 'ta'], ['친구 대결', 'net']].forEach(([t, v]) => {
     const b = document.createElement('button'); b.className = 'opt' + (s.mode === v ? ' sel' : ''); b.textContent = t;
     b.onclick = () => { s.mode = v; persist(); renderMenu(); }; om.appendChild(b);
   });
-  $('lblDiff').innerHTML = s.mode === 'ta' ? '<em>GHOST</em>기본 고스트 난이도' : '<em>LEVEL</em>난이도';
+  $('lblDiff').innerHTML = s.mode === 'ta' ? '<em>RIVAL</em>상대 고스트' : '<em>LEVEL</em>난이도';
   $('modeNote').textContent = s.mode === 'ta'
-    ? '혼자 달리며 고스트(최고 기록의 반투명 카트)와 겨룹니다. 내 기록이 기본 고스트보다 빠르면 내 기록 고스트가 나옵니다.'
+    ? '혼자 달리며 고스트(반투명 카트)와 겨룹니다. 아래 상대 고스트에서 쉬움~TAS 또는 내 최고 기록을 고르세요.'
     : s.mode === 'net' ? '방을 만들고 방 코드(또는 초대 링크)를 친구에게 보내면 최대 8명이 함께 달립니다. 카트 색상은 대기실에서 고릅니다. 인터넷 연결이 필요합니다.'
     : '봇 5대와 함께 순위를 겨룹니다.';
   $('rowDiff').classList.toggle('hidden', s.mode === 'net');
@@ -2594,13 +2604,16 @@ async function submitAccount() {
   if (acMode !== 'login' && pw !== pw2) { msg.textContent = '비밀번호 확인이 달라요'; return; }
   btn.disabled = true; msg.style.color = ''; msg.textContent = '처리 중...';
   try {
-    if (acMode === 'login') { await Api.login(u, pw); rememberUser(u); msg.textContent = ''; closePanel('account'); }
+    if (acMode === 'login') { await Api.login(u, pw); rememberUser(u); msg.textContent = ''; closePanel('account'); syncRecords(); }
     else if (acMode === 'register') {
-      const r = await Api.register(u, pw, $('acCarry').checked); rememberUser(u);
+      const carry = $('acCarry').checked;
+      const r = await Api.register(u, pw, carry); rememberUser(u);
       showRecovery(r.recovery);
+      if (carry) syncRecords();   // guest records move into the new account
     } else {
       const r = await Api.recover(u, $('acRec').value, pw); rememberUser(u);
       showRecovery(r.recovery);
+      syncRecords();
     }
     $('acPass').value = ''; $('acPass2').value = ''; $('acRec').value = '';
   } catch (e) { msg.style.color = '#ff8a7a'; msg.textContent = e.message; }
@@ -2623,10 +2636,10 @@ function renderGhostRow() {
   const el = effLaps(s.track, s.laps);
   const cg = chosenGhost && chosenGhost.trackId === tid && chosenGhost.laps === el ? chosenGhost : null;
   const mk = (label, sel, fn) => { const b = document.createElement('button'); b.className = 'opt' + (sel ? ' sel' : ''); b.textContent = label; b.onclick = fn; og.appendChild(b); };
-  mk('자동 (내 기록·기본 고스트)', !cg, () => { chosenGhost = null; renderMenu(); });
+  row.classList.toggle('hidden', !Api.enabled);
+  mk('아래에서 고른 상대', !cg, () => { chosenGhost = null; renderMenu(); });
   if (Api.enabled) mk('랭킹에서 고르기', !!cg, () => openRanking());
-  $('ghostNote').textContent = cg ? '상대: ' + cg.owner + ' ' + Core.fmtTime(cg.time) + ' (랭킹 고스트)' :
-    (Api.enabled ? '랭킹에서 다른 사람의 고스트를 골라 겨룰 수 있어요.' : '');
+  $('ghostNote').textContent = cg ? '상대: ' + cg.owner + ' ' + Core.fmtTime(cg.time) + ' (랭킹 고스트)' : '랭킹에서 다른 사람의 고스트를 골라 겨룰 수도 있어요.';
 }
 async function openRanking() {
   const s = save.settings, d = Core.TRACK_DEFS[s.track];
@@ -2653,6 +2666,43 @@ async function pickServerGhost(trackId, laps, user) {
     closePanel('ranking');
     renderMenu();
   } catch (e) { $('rkMsg').textContent = e.message; }
+}
+// records live in the account: pull my server records into this device, push faster local ones up
+let recSyncing = false;
+async function syncRecords() {
+  if (!Api.enabled || !Profile.user || recSyncing) return;
+  recSyncing = true;
+  const me = Profile.user.username;
+  try {
+    const r = await Api.myRecords(), srv = {};
+    for (const x of r.rows || []) {
+      const ti = Core.TRACK_DEFS.findIndex(d => d.id === x.track);
+      if (ti < 0 || !x.lapTimes || !x.lapTimes.length) continue;
+      srv[x.track + '_' + x.laps] = x;
+      const key = x.track + '_' + x.laps, lk = x.track + '_lap', bl = Math.min(...x.lapTimes);
+      if (save.best[key] == null || x.time < save.best[key]) save.best[key] = x.time;
+      if (save.best[lk] == null || bl < save.best[lk]) save.best[lk] = bl;
+      const mine = loadGhost(ti, x.laps);
+      if (!mine || x.time < mine.time - 0.001) {
+        try {
+          const g = await Api.ghost(x.track, x.laps, me);
+          if (g.ghost.stride === Core.GHOST_STRIDE && g.ghost.data.length)
+            storeGhost(ti, x.laps, { time: g.time, lapTimes: g.lapTimes, data: g.ghost.data, skin: g.skin, color: g.skin && g.skin.color != null ? Profile.colorHex(g.skin.color) : null });
+        } catch (e) { }
+      }
+    }
+    persist();
+    for (let ti = 0; ti < Core.TRACK_DEFS.length; ti++) for (const laps of (Core.getTrack(ti).p2p ? [1] : [1, 2, 3, 5])) {
+      const mine = loadGhost(ti, laps), id = Core.TRACK_DEFS[ti].id, s = srv[id + '_' + laps];
+      if (!mine || (s && s.time <= mine.time + 0.001)) continue;
+      try {
+        await Api.submitRecord({ track: id, laps, time: +mine.time.toFixed(3), lapTimes: mine.lapTimes.map(x => +x.toFixed(3)),
+          skin: mine.skin || Profile.skin(), ghost: { stride: mine.stride, data: mine.data } });
+      } catch (e) { }
+    }
+  } catch (e) { console.warn('record sync failed', e.message); }
+  recSyncing = false;
+  if (state === 'menu') renderMenu();
 }
 async function submitRecord(trackId, laps, P, r) {
   if (!Api.enabled || !Profile.user || !r.rec) return;
@@ -2686,7 +2736,7 @@ function startupGate() {
   if (startChecked) return; startChecked = true;
   if (Api.enabled && !Profile.user) openGate(); else afterGate();
 }
-Api.resume().then(() => { renderPbar(); startupGate(); }, () => startupGate());
+Api.resume().then(() => { renderPbar(); startupGate(); syncRecords(); }, () => startupGate());
 
 renderMenu();
 newDemo();

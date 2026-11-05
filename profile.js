@@ -337,6 +337,7 @@ const Api = {
     const body = Object.assign({}, rec, { ghost: { stride: g.stride, b64: packGhost(g.data) } });
     return this.req('POST', '/api/records', body, true);
   },
+  myRecords() { return this.req('GET', '/api/myrecords', null, true); },
   leaderboard(track, laps) { return this.req('GET', '/api/leaderboard?track=' + encodeURIComponent(track) + '&laps=' + laps); },
   async ghost(track, laps, user) {
     const r = await this.req('GET', '/api/ghost?track=' + encodeURIComponent(track) + '&laps=' + laps + '&user=' + encodeURIComponent(user));
