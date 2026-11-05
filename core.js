@@ -65,7 +65,20 @@ const TRACK_DEFS = [
   {id: 'sunset',name: '선셋 비치',desc: '노을 진 해변 고속 코스',concept: 'sea',seed: 101,elev: [[0,0],[120,0],[260,0],[480,3],[700,1],[806,4],[906,4],[924,3],[1004,1],[1140,3],[1360,2],[1580,5],[1800,0],[2098,0],[9999,0]],gaps: [[906,18]],pads: [[850,12]],pts: [[273,-153],[291,-87],[344,-9],[374,89],[239,153],[120,159],[53,187],[-90,290],[-251,284],[-364,221],[-385,119],[-362,11],[-278,-69],[-177,-105],[-121,-154],[-44,-275],[74,-342],[225,-321]]},
   {id: 'volcano',name: '볼케이노 림',desc: '용암 위를 뛰어넘는 화산 코스',concept: 'volcano',seed: 103,half: 8.2,elev: [[0,0],[120,0],[260,11],[400,1],[540,1],[680,0],[820,5],[960,16],[1100,8],[1240,15],[1381,17],[1481,17],[1499,16],[1579,14],[1660,8],[1894,0],[9999,0]],gaps: [[1481,18]],pads: [[1425,12]],pts: [[-163,178],[-269,137],[-303,62],[-307,-4],[-265,-57],[-269,-158],[-236,-273],[-96,-243],[-4,-171],[42,-112],[138,-146],[300,-162],[372,-79],[401,2],[344,67],[246,124],[144,152],[91,180],[6,232],[-78,217]]},
   {id: 'galaxy',name: '갤럭시 서킷',desc: '벽 없는 구간이 있는 우주 코스',concept: 'space',seed: 103,half: 8.2,hard: true,elev: [[0,0],[120,0],[260,11],[410,2],[560,1],[710,0],[860,9],[996,20],[1096,28],[1114,29],[1194,33],[1310,25],[1421,28],[1521,28],[1539,27],[1619,25],[1760,14],[1910,2],[2060,-1],[2281,0],[9999,0]],gaps: [[1096,18],[1521,18]],pads: [[1040,12],[1465,12]],open: [[105,185],[325,395],[1725,1795],[2175,2255]],pts: [[-178,-184],[-107,-217],[7,-224],[112,-210],[243,-221],[377,-190],[402,-83],[394,-17],[342,64],[359,182],[256,243],[123,253],[8,189],[-76,171],[-176,174],[-352,180],[-497,121],[-503,-20],[-433,-91],[-278,-134]]},
-  {id: 'neon', name: '네온 시티', desc: '밤의 도심, 직각 코너 연속 코스', concept: 'city', seed: 77, half: 8.6, scale: 1.25, round: 24, poly: [[0,-130],[0,170],[140,170],[140,70],[240,70],[240,200],[360,200],[360,-30],[200,-30],[200,-130]]}
+  {id: 'neon', name: '네온 시티', desc: '밤의 도심, 직각 코너 연속 코스', concept: 'city', seed: 77, half: 8.6, scale: 1.25, round: 24, poly: [[0,-130],[0,170],[140,170],[140,70],[240,70],[240,200],[360,200],[360,-30],[200,-30],[200,-130]]},
+  // point-to-point: summit -> valley, one run (no laps)
+  {id: 'ridge', name: '스카이 리지', desc: '편도 극한 코스 · 낭떠러지 · 빙판 · 블록 · 장거리 점프', concept: 'extreme', seed: 131, hard: true, p2p: true, scale: 1.3,
+   startS: 40, runout: 70, iceGrip: 0.5, blockPeriod: 2.4, blockExt: 9.6,
+   elev: [[0,80],[273,80],[406,72],[504,66],[631,58],[735,52],[871,44],[1001,40],[1200,38],[1364,40],[1480,40],[1516,40],[1590,33],[1839,33],[2200,48],[2240,48],[2560,26],[2700,22],[2718,20],[2790,18],[2808,15],[2994,10],[9999,10]],
+   widths: [[0,9],[1000,9],[1040,4.2],[1360,4.2],[1400,9],[1560,9],[1585,6.5],[1830,6.5],[1860,7],[2190,7],[2220,9],[2690,9],[2715,5],[2790,5],[2815,9],[9999,9]],
+   open: [[300,410],[530,640],[760,880],[1030,1380],[1880,2160],[2250,2520],[2718,2790]],
+   ice: [[520,650],[750,890],[2230,2560]],
+   gaps: [[1480,36],[2700,18],[2790,18]],
+   blocks: [[1630,0,1],[1662,1.6,-1],[1694,3.2,1],[1726,4.8,-1],[1758,0.3,1],[1790,1.9,-1]],
+   pts: [[0,-60],[0,150],[6,178],[26,190],[46,180],[54,155],[54,80],[62,55],[82,46],[102,56],[110,80],[110,160],[118,186],[140,196],[162,186],[170,160],[170,60],
+     [175,20],[195,-15],[230,-30],[265,-15],[300,-35],[335,-20],[370,-40],[430,-55],[520,-55],[600,-60],[680,-55],[730,-40],
+     [755,0],[740,40],[760,80],[740,120],[760,160],[790,200],[820,240],[810,290],[770,310],[720,300],[690,260],[680,230],[640,225],
+     [560,230],[460,230],[380,232],[300,232]]}
 ];
 function roundPoly(V, d) {
   const out = [], n = V.length;
@@ -91,18 +104,34 @@ function crPoint(p0, p1, p2, p3, t) {
   return L(B1, B2, t1, t2);
 }
 
+// smooth (cosine) interpolation through [[s, value], ...]
+function cosProfile(E, s, L) {
+  let j = 0; while (j < E.length - 2 && E[j + 1][0] <= s) j++;
+  const s0 = E[j][0], s1 = Math.min(E[j + 1][0], L), w = s1 > s0 ? clamp((s - s0) / (s1 - s0), 0, 1) : 0;
+  const e = (1 - Math.cos(w * Math.PI)) / 2;
+  return E[j][1] + (E[j + 1][1] - E[j][1]) * e;
+}
 function buildTrack(def) {
-  const P = def.pts, n = P.length, SUB = 40, dense = [];
-  for (let i = 0; i < n; i++) {
-    const p0 = P[(i - 1 + n) % n], p1 = P[i], p2 = P[(i + 1) % n], p3 = P[(i + 2) % n];
-    for (let j = 0; j < SUB; j++) dense.push(crPoint(p0, p1, p2, p3, j / SUB));
+  const P = def.pts, n = P.length, SUB = 40, dense = [], p2p = !!def.p2p;
+  if (p2p) {
+    // point-to-point: open spline that starts at P[0] and ends at P[n-1]
+    const ext = (a, b) => [2 * a[0] - b[0], 2 * a[1] - b[1]];
+    const Q = [ext(P[0], P[1])].concat(P, [ext(P[n - 1], P[n - 2])]);
+    for (let i = 1; i < Q.length - 2; i++) for (let j = 0; j < SUB; j++) dense.push(crPoint(Q[i - 1], Q[i], Q[i + 1], Q[i + 2], j / SUB));
+    dense.push(P[n - 1]);
+  } else {
+    for (let i = 0; i < n; i++) {
+      const p0 = P[(i - 1 + n) % n], p1 = P[i], p2 = P[(i + 1) % n], p3 = P[(i + 2) % n];
+      for (let j = 0; j < SUB; j++) dense.push(crPoint(p0, p1, p2, p3, j / SUB));
+    }
+    dense.push(dense[0]);
   }
-  dense.push(dense[0]);
   const cum = [0];
   for (let i = 1; i < dense.length; i++) cum.push(cum[i - 1] + Math.hypot(dense[i][0] - dense[i - 1][0], dense[i][1] - dense[i - 1][1]));
   const L = cum[cum.length - 1];
-  const N = Math.round(L);
-  const ds = L / N;
+  const N = p2p ? Math.round(L) + 1 : Math.round(L);   // open track: last sample sits exactly on the end
+  const ds = p2p ? L / (N - 1) : L / N;
+  const nxt = i => p2p ? Math.min(i + 1, N - 1) : (i + 1) % N, prv = i => p2p ? Math.max(i - 1, 0) : (i - 1 + N) % N;
   const px = new Float64Array(N), pz = new Float64Array(N), tx = new Float64Array(N), tz = new Float64Array(N);
   const nx = new Float64Array(N), nz = new Float64Array(N), ang = new Float64Array(N), dAng = new Float64Array(N);
   let j = 0;
@@ -114,14 +143,14 @@ function buildTrack(def) {
     pz[i] = dense[j][1] + (dense[j + 1][1] - dense[j][1]) * w;
   }
   for (let i = 0; i < N; i++) {
-    const a = (i + 1) % N, b = (i - 1 + N) % N;
+    const a = nxt(i), b = prv(i);
     let dx = px[a] - px[b], dz = pz[a] - pz[b];
     const l = Math.hypot(dx, dz) || 1;
     tx[i] = dx / l; tz[i] = dz / l;
     nx[i] = tz[i]; nz[i] = -tx[i];
     ang[i] = Math.atan2(tx[i], tz[i]);
   }
-  for (let i = 0; i < N; i++) dAng[i] = wrapA(ang[(i + 1) % N] - ang[i]);
+  for (let i = 0; i < N; i++) dAng[i] = wrapA(ang[nxt(i)] - ang[i]);
   const half = def.half || C.ROAD_HALF, wall = half + (C.WALL - C.ROAD_HALF);
   const h = new Float32Array(N), grade = new Float32Array(N), gapMask = new Uint8Array(N), openMask = new Uint8Array(N), padMask = new Uint8Array(N);
   const gaps = (def.gaps || []).map(([lip, len]) => ({ lip, a: lip, b: lip + len }));
@@ -130,10 +159,7 @@ function buildTrack(def) {
     const E = def.elev;
     for (let i = 0; i < N; i++) {
       const s = i * ds;
-      let j = 0; while (j < E.length - 2 && E[j + 1][0] <= s) j++;
-      const s0 = E[j][0], s1 = Math.min(E[j + 1][0], L), w = s1 > s0 ? clamp((s - s0) / (s1 - s0), 0, 1) : 0;
-      const e = (1 - Math.cos(w * Math.PI)) / 2;
-      h[i] = E[j][1] + (E[j + 1][1] - E[j][1]) * e;
+      h[i] = cosProfile(E, s, L);
       for (const g of gaps) {
         const k0 = g.lip - C.KICK_LEN;
         if (s >= k0 && s <= g.lip) h[i] += C.KICK_RISE * Math.pow((s - k0) / C.KICK_LEN, 2);
@@ -147,14 +173,38 @@ function buildTrack(def) {
     for (const p of pads) if (s >= p.a && s <= p.b) padMask[i] = 1;
   }
   for (let i = 0; i < N; i++) {
-    const a = (i + 1) % N, b = (i - 1 + N) % N;
-    grade[i] = (h[a] - h[b]) / (2 * ds);
+    const a = nxt(i), b = prv(i);
+    grade[i] = (h[a] - h[b]) / (p2p ? ((a - b) * ds || 1) : 2 * ds);
   }
   for (const g of gaps) { const i = Math.round((g.lip - C.KICK_LEN - 3) / ds); g.launch = 2 * C.KICK_RISE / C.KICK_LEN + grade[(i + N) % N]; }
+  // per-sample road width and grip (constant on the classic tracks)
+  const halfA = new Float64Array(N), curbA = new Float64Array(N), wallA = new Float64Array(N), limitA = new Float64Array(N), gripA = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    const s = i * ds, hw = def.widths ? cosProfile(def.widths, s, L) : half;
+    halfA[i] = hw; curbA[i] = hw + (C.CURB_OUT - C.ROAD_HALF); wallA[i] = hw + (C.WALL - C.ROAD_HALF); limitA[i] = wallA[i] - C.KART_R;
+    gripA[i] = def.grip || 1;
+    for (const z of def.ice || []) if (s >= z[0] && s <= z[1]) gripA[i] = def.iceGrip || 0.5;
+  }
+  // pistons: blocks that shoot out of one wall and pull back in again
+  const blocks = (def.blocks || []).map(([s0, ph, side]) => {
+    const i = Math.round(s0 / ds);
+    return { s: s0, i, ph, side: side || 1, ext: def.blockExt || 9.6, w: 2 * Math.PI / (def.blockPeriod || 2.4), hs: 1.6, wl: wallA[i] };
+  });
+  const startS = p2p ? def.startS || 40 : 0, endS = p2p ? L - (def.runout || 70) : L;
   return { def, N, L, ds, px, pz, tx, tz, nx, nz, ang, dAng,
     half, curb: half + (C.CURB_OUT - C.ROAD_HALF), wall, limit: wall - C.KART_R, grip: def.grip || 1, ws: half / C.ROAD_HALF,
+    halfA, curbA, wallA, limitA, gripA, varW: !!def.widths, blocks, p2p, startS, endS, lapLen: endS - startS,
     h, grade, gaps, pads, gapMask, openMask, padMask, hasElev: !!(def.elev || def.gaps || def.open) };
 }
+// piston state at time t: how far it sticks out, the lateral centre/half-width of the part on the road, and its inner face speed
+function blockState(b, t, out) {
+  out = out || {};
+  const e = b.ext * (0.5 - 0.5 * Math.cos(b.w * t + b.ph));
+  out.e = e; out.hl = e / 2; out.c = b.side * (b.wl - e / 2);
+  out.v = -b.side * b.ext * 0.5 * b.w * Math.sin(b.w * t + b.ph);   // lateral speed of the inner face
+  return out;
+}
+const _bs = {};
 
 const trackCache = {};
 function getTrack(i) {
@@ -164,11 +214,13 @@ function getTrack(i) {
 
 function idxOf(tr, s) {
   let f = s / tr.ds;
+  if (tr.p2p) return clamp(f, 0, tr.N - 1);
   f = ((f % tr.N) + tr.N) % tr.N;
   return f;
 }
+function nextIdx(tr, i) { return tr.p2p ? Math.min(i + 1, tr.N - 1) : (i + 1) % tr.N; }
 function pointAt(tr, s, lat) {
-  const f = idxOf(tr, s), i = Math.floor(f) % tr.N, i2 = (i + 1) % tr.N, w = f - Math.floor(f);
+  const f = idxOf(tr, s), i = Math.floor(f) % tr.N, i2 = nextIdx(tr, i), w = f - Math.floor(f);
   const x = tr.px[i] + (tr.px[i2] - tr.px[i]) * w, z = tr.pz[i] + (tr.pz[i2] - tr.pz[i]) * w;
   const nx = tr.nx[i] + (tr.nx[i2] - tr.nx[i]) * w, nz = tr.nz[i] + (tr.nz[i2] - tr.nz[i]) * w;
   return { x: x + nx * (lat || 0), z: z + nz * (lat || 0) };
@@ -178,7 +230,7 @@ function angAt(tr, s) {
   return wrapA(tr.ang[i] + tr.dAng[i] * w);
 }
 function heightAt(tr, s) {
-  const f = idxOf(tr, s), i = Math.floor(f) % tr.N, i2 = (i + 1) % tr.N, w = f - Math.floor(f);
+  const f = idxOf(tr, s), i = Math.floor(f) % tr.N, i2 = nextIdx(tr, i), w = f - Math.floor(f);
   return tr.h[i] + (tr.h[i2] - tr.h[i]) * w;
 }
 function gapAt(tr, s) {
@@ -189,7 +241,7 @@ function turnBetween(tr, s1, s2) {
   let i = Math.floor(idxOf(tr, s1));
   const steps = Math.max(0, Math.round((s2 - s1) / tr.ds));
   let sum = 0;
-  for (let k = 0; k < steps; k++) { sum += tr.dAng[i]; i = (i + 1) % tr.N; }
+  for (let k = 0; k < steps; k++) { sum += tr.dAng[i]; i = nextIdx(tr, i); }
   return sum;
 }
 function project(tr, x, z, hint) {
@@ -202,6 +254,7 @@ function project(tr, x, z, hint) {
     }
   } else {
     for (let k = -40; k <= 40; k++) {
+      if (tr.p2p && (hint + k < 0 || hint + k >= N)) continue;
       const i = ((hint + k) % N + N) % N;
       const dx = x - tr.px[i], dz = z - tr.pz[i], d = dx * dx + dz * dz;
       if (d < bd) { bd = d; best = i; }
@@ -211,7 +264,7 @@ function project(tr, x, z, hint) {
   const along = dx * tr.tx[i] + dz * tr.tz[i];
   const lat = dx * tr.nx[i] + dz * tr.nz[i];
   let s = i * tr.ds + along;
-  s = ((s % tr.L) + tr.L) % tr.L;
+  s = tr.p2p ? clamp(s, 0, tr.L) : ((s % tr.L) + tr.L) % tr.L;
   return { i, s, lat };
 }
 
@@ -255,7 +308,7 @@ function createRace(opts) {
   const total = opts.solo ? 1 : 6;
   const playerSlot = opts.solo ? 0 : (opts.playerSlot != null ? opts.playerSlot : 2 + Math.floor(rng() * 4));
   const race = {
-    track: tr, laps: opts.laps || 3, karts: [], events: [], rng, diff,
+    track: tr, laps: tr.p2p ? 1 : opts.laps || 3, karts: [], events: [], rng, diff,
     time: -C.COUNTDOWN, state: 'countdown', retireT: -1, ended: false, player: null, endTime: 0,
     solo: !!opts.solo, autopilot: !!opts.autopilot, rec: opts.record ? { acc: 0, data: [], done: false } : null
   };
@@ -271,7 +324,7 @@ function createRace(opts) {
     const gslot = opts.gridSlot != null ? opts.gridSlot : slot;
     const row = Math.floor(gslot / 2), col = gslot % 2;
     const back = 8 + row * 8 + col * 2;
-    placeOnTrack(race, k, tr.L - back, opts.solo && opts.gridSlot == null ? 0 : (col ? -4 : 4) * tr.ws);
+    placeOnTrack(race, k, (tr.p2p ? tr.startS : tr.L) - back, opts.solo && opts.gridSlot == null ? 0 : (col ? -4 : 4) * tr.ws);
     k.dist = -back;
     k.ai = {
       lane: (rng() * 2 - 1) * 3 * tr.ws, laneT: 2 + rng() * 3, ibPlan: null, tapHold: 0, tapCD: 0, boostCD: 1 + rng() * 2,
@@ -407,7 +460,7 @@ function updateKart(k, inp, dt, race) {
   }
 
   k.th = wrapA(k.th + yaw * dt);
-  const gm = race.track.grip, GK = C.GRIP_K * gm, DK = C.DRIFT_K * (0.6 + 0.4 * gm);
+  const gm = race.track.gripA[k.idx > 0 ? k.idx : 0], GK = C.GRIP_K * gm, DK = C.DRIFT_K * (0.6 + 0.4 * gm);
   let K = GK;
   if (k.drift === 1) K = DK;
   else if (k.drift === 2) K = DK + (GK - DK) * Math.min(1, k.recT / C.REC_T);
@@ -437,13 +490,25 @@ function updateKart(k, inp, dt, race) {
 function wallCollide(k, race) {
   const tr = race.track;
   const pr = project(tr, k.x, k.z, k.idx);
+  if (tr.p2p) {
+    // barriers behind the start grid and after the finish run-out
+    const lo = 3, hi = tr.L - 3;
+    if (pr.s < lo || pr.s > hi) {
+      const sg = pr.s > hi ? 1 : -1, pen = sg > 0 ? pr.s - hi : lo - pr.s, ox = tr.tx[pr.i] * sg, oz = tr.tz[pr.i] * sg;
+      k.x -= ox * pen; k.z -= oz * pen; pr.s -= sg * pen;
+      let [vx, vz] = velOf(k);
+      const vn = vx * ox + vz * oz;
+      if (vn > 0) { vx -= 1.2 * vn * ox; vz -= 1.2 * vn * oz; setVel(k, vx * 0.5, vz * 0.5); if (vn > 2) { k.wallHits++; race.events.push({ t: 'wall', k, p: vn }); } }
+    }
+  }
   if (tr.hasElev) {
     if (tr.gapMask[pr.i] || tr.openMask[pr.i] || k.fall) return pr;
     if (k.air && k.y > heightAt(tr, pr.s) + 1.3) return pr;
   }
-  if (Math.abs(pr.lat) > tr.limit) {
+  const lim = tr.limitA[pr.i];
+  if (Math.abs(pr.lat) > lim) {
     const sg = Math.sign(pr.lat), ox = tr.nx[pr.i] * sg, oz = tr.nz[pr.i] * sg;
-    const pen = Math.abs(pr.lat) - tr.limit;
+    const pen = Math.abs(pr.lat) - lim;
     k.x -= ox * pen; k.z -= oz * pen;
     pr.lat -= sg * pen;
     let [vx, vz] = velOf(k);
@@ -465,6 +530,62 @@ function wallCollide(k, race) {
   return pr;
 }
 
+function blockCollisions(race) {
+  const tr = race.track, R = C.KART_R;
+  for (const k of race.karts) {
+    if (k.fall) continue;
+    for (const b of tr.blocks) {
+      const ds = k.s - b.s;
+      if (ds > 6 || ds < -6) continue;
+      if (k.air && k.y > heightAt(tr, b.s) + 2.2) continue;
+      const st = blockState(b, race.time, _bs);
+      if (st.e < 0.05) continue;
+      const bl = st.c, dl = k.lat - bl, ex = b.hs + R, ey = st.hl + R;
+      if (Math.abs(ds) >= ex || Math.abs(dl) >= ey) continue;
+      const ps = ex - Math.abs(ds), pl = ey - Math.abs(dl);
+      const tx = tr.tx[b.i], tz = tr.tz[b.i], nx = tr.nx[b.i], nz = tr.nz[b.i];
+      let [vx, vz] = velOf(k);
+      // pinned against the wall: a full stop for players, bots just get shoved (they'd never get free)
+      const squeezed = k.isPlayer && Math.abs(k.lat + (dl < 0 ? -pl : pl)) > tr.limitA[b.i] - 0.2;
+      if (ps < pl || squeezed) {
+        // head-on (or pinned against the wall): stop dead against the block
+        const sg = ds < 0 ? -1 : 1;
+        k.x += tx * sg * ps; k.z += tz * sg * ps; k.s += sg * ps; k.dist += sg * ps;
+        const vt = vx * tx + vz * tz;
+        if (vt * sg < 0) {
+          vx -= 1.3 * vt * tx; vz -= 1.3 * vt * tz; setVel(k, vx * 0.45, vz * 0.45);
+          if (k.drift === 1) k.drift = 0;
+          if (Math.abs(vt) > 2) { k.wallHits++; race.events.push({ t: 'wall', k, p: Math.abs(vt) }); }
+        }
+      } else {
+        // side: shoved along with the block
+        const sg = dl < 0 ? -1 : 1, bv = st.v;
+        k.x += nx * sg * pl; k.z += nz * sg * pl; k.lat += sg * pl;
+        const vn = vx * nx + vz * nz, rel = vn - bv;
+        if (rel * sg < 0) {
+          vx -= 1.4 * rel * nx; vz -= 1.4 * rel * nz; setVel(k, vx * 0.85, vz * 0.85);
+          if (Math.abs(rel) > 2) { k.wallHits++; race.events.push({ t: 'wall', k, p: Math.abs(rel) }); }
+        }
+      }
+    }
+  }
+}
+// lane that dodges the next blocks (used by bots and the TAS driver)
+function blockDodge(k, race, lane, v) {
+  const tr = race.track;
+  for (const b of tr.blocks) {
+    const ds = b.s - k.s;
+    if (ds < -2 || ds > 75) continue;
+    const ta = Math.max(0, ds) / Math.max(12, v);
+    // worst extension while we pass it
+    let e = 0;
+    for (const dt of [-0.15, 0, 0.15]) e = Math.max(e, blockState(b, race.time + ta + dt, _bs).e);
+    const face = b.side * (b.wl - e), room = tr.halfA[b.i] - 1.6;
+    if (e > 0.5 && (lane - face) * b.side > -(C.KART_R + 0.9)) lane = -b.side * room;
+    break;
+  }
+  return lane;
+}
 function kartCollisions(race) {
   const ks = race.karts, R2 = C.KART_R * 2.2;
   for (let i = 0; i < ks.length; i++) for (let j = i + 1; j < ks.length; j++) {
@@ -510,6 +631,8 @@ function aiInput(k, race, dt) {
   for (const o of tr.def.open || []) if (k.s > o[0] - 30 && k.s < o[1]) lane = clamp(lane, -1.5 * tr.ws, 1.5 * tr.ws);
   if (nearRamp) lane = 0;
   const la = 8 + Math.max(0, v) * 0.42;
+  if (tr.varW) { const w = Math.max(0, tr.halfA[Math.floor(idxOf(tr, k.s + la))] - 2.6); lane = clamp(lane, -w, w); }
+  if (tr.blocks.length) lane = blockDodge(k, race, lane, v);
   const tgt = pointAt(tr, k.s + la, lane);
   const desired = Math.atan2(tgt.x - k.x, tgt.z - k.z);
   const ref = k.drift === 1 ? k.phi : k.th;
@@ -550,13 +673,18 @@ function aiInput(k, race, dt) {
     inp.boostEdge = true; ai.boostCD = 1.5 + race.rng() * 2.5;
   }
   if (nearRamp) brake = 0;
+  if (tr.p2p) {
+    if (nearRamp && k.items > 0 && k.boostT <= 0) inp.boostEdge = true;   // long jumps need the speed
+    if (k.finished) { accel = 0; brake = 1; drift = false; }
+  }
   inp.steer = steer; inp.drift = drift; inp.accel = accel; inp.brake = brake;
   return inp;
 }
 
 function respawn(race, k) {
   const tr = race.track;
-  let s = k.s;
+  // after a fall, come back where the kart left the road (not where it drifted to in the air) -- no shortcuts by falling
+  let s = k.fall && k.goodS != null ? k.goodS : k.s;
   for (const g of tr.gaps) if (s > g.lip - 40 && s < g.b + 4) s = g.b + 12;
   let d = s - k.s;
   if (d > tr.L / 2) d -= tr.L; else if (d < -tr.L / 2) d += tr.L;
@@ -572,7 +700,7 @@ function verticalStep(k, pr, prevS, dt, race) {
   if (!tr.hasElev) { k.y = 0; return; }
   const gH = heightAt(tr, pr.s);
   const gap = tr.gapMask[pr.i] === 1;
-  const offEdge = Math.abs(pr.lat) > tr.wall + 0.4;
+  const offEdge = Math.abs(pr.lat) > tr.wallA[pr.i] + 0.4;
   const overRoad = !gap && !offEdge;
   if (!k.air) {
     for (const g of tr.gaps) {
@@ -595,7 +723,7 @@ function verticalStep(k, pr, prevS, dt, race) {
       {
         if (k.v > 0) k.v -= C.SLOPE_K * tr.grade[pr.i] * Math.cos(k.phi - tr.ang[pr.i]) * dt;
         k.y = gH;
-        if (tr.padMask[pr.i] && Math.abs(pr.lat) < 4.5 * tr.ws) {
+        if (tr.padMask[pr.i] && Math.abs(pr.lat) < Math.min(4.5 * tr.ws, tr.halfA[pr.i])) {
           const pad = tr.pads.find(p => pr.s >= p.a - 1 && pr.s <= p.b + 1);
           if (pad && k.lastPad !== pad.id) {
             k.lastPad = pad.id; k.startT = Math.max(k.startT, C.PAD_T); k.v = Math.max(k.v, C.IB_V * k.mult * 0.92);
@@ -664,6 +792,7 @@ function stepRace(race, dt, playerInput) {
     if (inp === playerInput) { inp.accelEdge = false; inp.boostEdge = false; }
   }
   kartCollisions(race);
+  if (tr.blocks.length) blockCollisions(race);
   for (const k of race.karts) {
     const pr = wallCollide(k, race);
     k.idx = pr.i;
@@ -672,19 +801,20 @@ function stepRace(race, dt, playerInput) {
     if (d > tr.L / 2) d -= tr.L; else if (d < -tr.L / 2) d += tr.L;
     k.s = pr.s; k.lat = pr.lat; k.dist += d;
     verticalStep(k, pr, prevS, dt, race);
+    if (!k.air && !k.fall) k.goodS = k.s;
 
     const ta = tr.ang[pr.i];
     const facing = Math.cos(k.th - ta);
     if (k.v > 4 && facing < -0.2) k.wrongT += dt; else k.wrongT = Math.max(0, k.wrongT - dt * 2);
     k.wrongWay = k.wrongT > 1.0;
 
-    if ((!k.isPlayer || k.finished || race.autopilot) && Math.abs(k.v) < 3 && !k.air) {
+    if ((!k.isPlayer || k.finished || race.autopilot) && Math.abs(k.v) < 3 && !k.air && !(tr.p2p && k.finished)) {
       k.stuckT += dt;
       if (k.stuckT > 2.0) respawn(race, k);
     } else k.stuckT = 0;
     if (!k.isPlayer && k.wrongT > 2.5) { respawn(race, k); k.wrongT = 0; }
 
-    const done = k.dist >= 0 ? Math.floor(k.dist / tr.L) : -1;
+    const done = k.dist >= 0 ? Math.floor(k.dist / tr.lapLen) : -1;
     if (!k.finished && done > k.lapsDone) {
       k.lapsDone = done;
       k.lapTimes.push(race.time - k.lapStart);
@@ -787,6 +917,8 @@ function tasInput(k, race, dt) {
   const la = G.la0 + Math.max(0, v) * G.laK;
   let lane = planAt(P.lane, P.sp, L, s + la) * tr.ws;
   if (nearRamp) lane *= 0.3;
+  if (tr.varW) { const w = Math.max(0, tr.halfA[Math.floor(idxOf(tr, s + la))] - 1.4); lane = clamp(lane, -w, w); }
+  if (tr.blocks.length && P.dodge !== 0) lane = blockDodge(k, race, lane, v);
   const tgt = pointAt(tr, s + la, lane);
   const desired = Math.atan2(tgt.x - k.x, tgt.z - k.z);
   const ref = k.drift === 1 ? k.phi : k.th;
@@ -807,7 +939,9 @@ function tasInput(k, race, dt) {
   }
   if (k.ibOpen && !k.ibUsed && k.ibPhase >= C.IB_PERF) inp.accelEdge = true;
   if (k.items > 0 && k.boostT <= 0 && P.boost[j] > 0) inp.boostEdge = true;
-  inp.steer = steer; inp.drift = drift; inp.accel = 1; inp.brake = 0;
+  let accel = 1, brake = 0;
+  if (P.lift) { const lv = P.lift[j]; if (v > lv) { accel = 0; if (v > lv + 5) brake = 1; } }   // speed limit per section (iced hairpins)
+  inp.steer = steer; inp.drift = drift; inp.accel = accel; inp.brake = brake;
   return inp;
 }
 // packed plan (as stored in tas.js) -> arrays
@@ -815,7 +949,7 @@ function unpackTasPlan(pk) {
   const bits = (str, n) => { const a = []; for (let i = 0; i < n; i++) a.push(str[i] === '1' ? 1 : -1); return a; };
   const n = pk.lane.length, sc = (a, d) => a.map(x => x / d);
   return { sp: pk.sp, lane: sc(pk.lane, 1000), thr: sc(pk.thr, 1000), need: sc(pk.need, 1000), hold: sc(pk.hold, 1000),
-    chain: bits(pk.chain, n), drag: bits(pk.drag, n), boost: bits(pk.boost, n), g: pk.g };
+    chain: bits(pk.chain, n), drag: bits(pk.drag, n), boost: bits(pk.boost, n), lift: pk.lift ? sc(pk.lift, 1000) : null, g: pk.g };
 }
 function runTas(track, laps, plan, record) {
   const race = createRace({ track, laps, solo: true, seed: 1, record });
@@ -842,8 +976,9 @@ function fmtTime(t) {
 
 root.Core = {
   C, TRACK_DEFS, KART_COLORS, DIFF, mulberry32, wrapA, clamp, getTrack, pointAt, angAt, project, turnBetween,
-  CONCEPTS: [['all', '전체'], ['forest', '숲'], ['desert', '사막'], ['ice', '얼음'], ['sea', '바다'], ['city', '도시'], ['volcano', '화산'], ['space', '우주']],
+  CONCEPTS: [['all', '전체'], ['forest', '숲'], ['desert', '사막'], ['ice', '얼음'], ['sea', '바다'], ['city', '도시'], ['volcano', '화산'], ['space', '우주'], ['extreme', '익스트림']],
   buildTrack, clearTrackCache: () => { for (const k in trackCache) delete trackCache[k]; }, createRace, stepRace, updateKart, aiInput, newInput, velOf, setVel, fmtTime, heightAt, gapAt,
+  blockState,
   GHOST_DT, GHOST_STRIDE: GS, prepGhost, ghostAt, ghostTimeAtDist, makeDefaultGhost,
   tasInput, unpackTasPlan, runTas, makeTasGhost
 };

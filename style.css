@@ -227,7 +227,7 @@ td.t{text-align:right;font-variant-numeric:tabular-nums}
 #menu .trk b u,#mapPick .trk b u{background:#ff3b30;border-radius:6px;padding:1px 6px;font-size:10px;vertical-align:3px;font-family:"Pretendard",sans-serif;font-weight:800;font-style:normal}
 #menu .trk.sel,#menu .trk.sel:hover,#mapPick .trk.sel,#mapPick .trk.sel:hover{background:#2a2817;border-color:#ffd400;color:#fff;box-shadow:0 0 0 1px #ffd400,0 6px 22px rgba(255,212,0,.18)}
 #menu .trk.sel::after,#mapPick .trk.sel::after{content:'SELECTED';position:absolute;right:-30px;top:12px;transform:rotate(45deg);background:#ffd400;color:#111;font-size:8px;font-weight:900;letter-spacing:1px;padding:2px 30px}
-#menu .concepts,#mapPick .concepts{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;margin-bottom:10px;padding-bottom:4px;scrollbar-width:none;touch-action:pan-x}
+#menu .concepts,#mapPick .concepts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;padding-bottom:4px}
 #menu .concepts::-webkit-scrollbar,#mapPick .concepts::-webkit-scrollbar{display:none}
 #menu .concepts .opt,#mapPick .concepts .opt{flex:none;padding:6px 13px;font-size:14px;border-radius:999px}
 #menu .concepts .opt i,#mapPick .concepts .opt i{font-style:normal;color:#8d8d99;margin-left:4px;font-size:12px}
