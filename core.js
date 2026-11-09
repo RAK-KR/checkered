@@ -29,6 +29,12 @@ function wrapA(a) {
 }
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
+// spiral: radius shrinks linearly from r0 to r1 over `turns` revolutions, after a straight lead-in of `lead` metres
+function spiralPts(r0, r1, turns, lead, stepDeg) {
+  const pts = [[r0, -lead], [r0, -lead / 2]], tot = turns * 2 * Math.PI, st = stepDeg * Math.PI / 180;
+  for (let a = 0; a <= tot + 1e-9; a += st) { const r = r0 + (r1 - r0) * a / tot; pts.push([r * Math.cos(a), r * Math.sin(a)]); }
+  return pts;
+}
 const TRACK_DEFS = [
   {
     id: 'green', concept: 'forest', name: '그린 서킷', desc: '완만한 코너 위주의 입문 코스', seed: 11,
@@ -78,7 +84,27 @@ const TRACK_DEFS = [
    pts: [[0,-60],[0,150],[6,178],[26,190],[46,180],[54,155],[54,80],[62,55],[82,46],[102,56],[110,80],[110,160],[118,186],[140,196],[162,186],[170,160],[170,60],
      [175,20],[195,-15],[230,-30],[265,-15],[300,-35],[335,-20],[370,-40],[430,-55],[520,-55],[600,-60],[680,-55],[730,-40],
      [755,0],[740,40],[760,80],[740,120],[760,160],[790,200],[820,240],[810,290],[770,310],[720,300],[690,260],[680,230],[640,225],
-     [560,230],[460,230],[380,232],[300,232]]}
+     [560,230],[460,230],[380,232],[300,232]]},
+  // lap course over a molten-metal pool
+  {id: 'foundry', name: '스틸 팩토리', desc: '용광로 위 철골 서킷 · 피스톤 · 기름 · 장거리 점프', concept: 'extreme', seed: 151, hard: true, scale: 1.15,
+   iceGrip: 0.45, blockPeriod: 2.4, blockExt: 9.6,
+   elev: [[0,10],[300,10],[447,10],[632,14],[780,14],[1073,14],[1269,14],[1352,12],[1592,12],[1798,22],[1990,22],[2012,22],[2034,20],[2072,19],[2094,16],[2200,10],[9999,10]],
+   widths: [[0,9],[440,9],[460,6.5],[640,6.5],[660,9],[785,9],[805,4.5],[1075,4.5],[1100,9],[1800,9],[1815,6.5],[1965,6.5],[1980,9],[2030,9],[2036,5],[2070,5],[2076,9],[9999,9]],
+   open: [[650,790],[790,1090],[2032,2074]],
+   ice: [[1380,1460],[1490,1570]],
+   gaps: [[1180,34],[2012,20],[2072,20]],
+   blocks: [[470,0,1],[502,1.4,-1],[534,2.8,1],[566,4.2,-1],[598,5.6,1],[1840,0,-1],[1868,1.0,1],[1896,2.0,-1],[1924,3.0,1],[1952,4.0,-1]],
+   pts: [[0,0],[260,0],[320,20],[340,80],[340,240],[320,300],[260,312],[232,282],[252,236],[226,190],[254,144],[226,100],[160,88],[60,108],[0,150],[-38,206],[0,262],[-38,318],[-62,368],[-122,360],[-142,305],[-142,150],[-130,40],[-90,0]]},
+  // one-way spiral down into an open-pit mine: always turning the same way, tighter and tighter, no wall on the inside
+  {id: 'spiral', name: '스파이럴 피트', desc: '편도 나선 다운힐 · 안쪽은 낭떠러지 · 점점 조여지는 코너', concept: 'extreme', seed: 167, hard: true, p2p: true,
+   startS: 40, runout: 70, iceGrip: 0.5, blockPeriod: 2.2, blockExt: 7.2,
+   elev: [[0,86],[190,86],[400,77.1],[600,68.6],[800,60.1],[1000,51.6],[1028,50.4],[1200,43.1],[1400,34.6],[1600,26.2],[1800,17.7],[2000,9.2],[9999,6]],
+   widths: [[0,9],[1050,9],[1150,7.5],[1500,7.5],[1600,6.5],[9999,6.5]],
+   openSide: [[230,2080,-1]],
+   ice: [[560,720],[1650,1800]],
+   gaps: [[1000,28]],
+   blocks: [[1250,0,1],[1285,1.5,1],[1320,3.0,1]],
+   pts: spiralPts(135, 18, 4, 150, 30)}
 ];
 function roundPoly(V, d) {
   const out = [], n = V.length;
@@ -152,7 +178,7 @@ function buildTrack(def) {
   }
   for (let i = 0; i < N; i++) dAng[i] = wrapA(ang[nxt(i)] - ang[i]);
   const half = def.half || C.ROAD_HALF, wall = half + (C.WALL - C.ROAD_HALF);
-  const h = new Float32Array(N), grade = new Float32Array(N), gapMask = new Uint8Array(N), openMask = new Uint8Array(N), padMask = new Uint8Array(N);
+  const h = new Float32Array(N), grade = new Float32Array(N), gapMask = new Uint8Array(N), openMask = new Uint8Array(N), padMask = new Uint8Array(N), sideOpen = new Int8Array(N);
   const gaps = (def.gaps || []).map(([lip, len]) => ({ lip, a: lip, b: lip + len }));
   const pads = (def.pads || []).map(([s0, len], id) => ({ id, a: s0, b: s0 + len }));
   if (def.elev) {
@@ -170,6 +196,7 @@ function buildTrack(def) {
     const s = i * ds;
     for (const g of gaps) if (s > g.a && s < g.b) gapMask[i] = 1;
     for (const o of def.open || []) if (s >= o[0] && s <= o[1]) openMask[i] = 1;
+    for (const o of def.openSide || []) if (s >= o[0] && s <= o[1]) sideOpen[i] = o[2];   // only the lat-sign o[2] side has no wall
     for (const p of pads) if (s >= p.a && s <= p.b) padMask[i] = 1;
   }
   for (let i = 0; i < N; i++) {
@@ -194,7 +221,7 @@ function buildTrack(def) {
   return { def, N, L, ds, px, pz, tx, tz, nx, nz, ang, dAng,
     half, curb: half + (C.CURB_OUT - C.ROAD_HALF), wall, limit: wall - C.KART_R, grip: def.grip || 1, ws: half / C.ROAD_HALF,
     halfA, curbA, wallA, limitA, gripA, varW: !!def.widths, blocks, p2p, startS, endS, lapLen: endS - startS,
-    h, grade, gaps, pads, gapMask, openMask, padMask, hasElev: !!(def.elev || def.gaps || def.open) };
+    h, grade, gaps, pads, gapMask, openMask, padMask, sideOpen, hasSideOpen: !!def.openSide, hasElev: !!(def.elev || def.gaps || def.open || def.openSide) };
 }
 // piston state at time t: how far it sticks out, the lateral centre/half-width of the part on the road, and its inner face speed
 function blockState(b, t, out) {
@@ -507,6 +534,7 @@ function wallCollide(k, race) {
   if (tr.hasElev) {
     if (tr.gapMask[pr.i] || tr.openMask[pr.i] || k.fall) return pr;
     if (k.air && k.y > heightAt(tr, pr.s) + 1.3) return pr;
+    if (tr.sideOpen[pr.i] && Math.sign(pr.lat) === tr.sideOpen[pr.i]) return pr;   // that edge has no wall
   }
   const lim = tr.limitA[pr.i];
   if (Math.abs(pr.lat) > lim) {
@@ -574,6 +602,13 @@ function blockCollisions(race) {
   }
 }
 // lane that dodges the next blocks (used by bots and the TAS driver)
+// stay `m` metres inside a wall-less edge
+function edgeMargin(tr, s, lane, m) {
+  const i = Math.floor(idxOf(tr, s)), sd = tr.sideOpen[i];
+  if (!sd) return lane;
+  const lim = tr.halfA[i] - m;
+  return sd > 0 ? Math.min(lane, lim) : Math.max(lane, -lim);
+}
 function blockDodge(k, race, lane, v) {
   const tr = race.track;
   for (const b of tr.blocks) {
@@ -635,6 +670,7 @@ function aiInput(k, race, dt) {
   if (nearRamp) lane = 0;
   const la = 8 + Math.max(0, v) * 0.42;
   if (tr.varW) { const w = Math.max(0, tr.halfA[Math.floor(idxOf(tr, k.s + la))] - 2.6); lane = clamp(lane, -w, w); }
+  if (tr.hasSideOpen) lane = edgeMargin(tr, k.s + la, lane, 3.2);
   if (tr.blocks.length) lane = blockDodge(k, race, lane, v);
   const tgt = pointAt(tr, k.s + la, lane);
   const desired = Math.atan2(tgt.x - k.x, tgt.z - k.z);
@@ -925,6 +961,7 @@ function tasInput(k, race, dt) {
   let lane = planAt(P.lane, P.sp, L, s + la) * tr.ws;
   if (nearRamp) lane *= 0.3;
   if (tr.varW) { const w = Math.max(0, tr.halfA[Math.floor(idxOf(tr, s + la))] - 1.4); lane = clamp(lane, -w, w); }
+  if (tr.hasSideOpen) lane = edgeMargin(tr, s + la, lane, 0.6 + (P.g.edge || 0));
   if (tr.blocks.length && P.dodge !== 0) lane = blockDodge(k, race, lane, v);
   const tgt = pointAt(tr, s + la, lane);
   const desired = Math.atan2(tgt.x - k.x, tgt.z - k.z);

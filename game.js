@@ -205,6 +205,8 @@ const THEMES = {
   galaxy: { sky: 0x070a1c, g1: '#000', g2: '#000', noGround: true, tree: 0, trunk: 0, hill: 0, count: 0, decor: 'none', hills: 'none', space: true, fog: [500, 1500], hemiI: 0.75, hemiC: 0xb8c4ff, skirt: 0x2a2f55, skirtBottom: -70, shoulder: 0x3a3f6a, curb: 'neon' },
   neon: { sky: 0x0c0e22, g1: '#1d1f2c', g2: '#1a1c28', tree: 0, trunk: 0, hill: 0x161a2e, count: 150, decor: 'neon', hills: 'tower', fog: [120, 540], hemiI: 0.45, sunI: 0.35, curb: 'neon', lamps: true, shoulder: 0x2a2d3c },
   ridge: { sky: 0x86a9d6, g1: '#eef3f9', g2: '#e7eef7', noTex: true, tree: 0, trunk: 0, hill: 0x7d7f8f, count: 0, decor: 'none', hills: 'peak', fog: [260, 1100], hemiI: 0.85, sunC: 0xfff0dc, shoulder: 0x6f6a66, skirt: 0x5d5752, skirtBottom: -60, road: 0xd6d6dc, clouds: true },
+  foundry: { sky: 0x1f1820, g1: '#000', g2: '#000', lavaGround: true, tree: 0, trunk: 0, hill: 0x2a2526, count: 0, decor: 'none', hills: 'tower', fog: [140, 620], hemiI: 0.6, hemiC: 0xffd2b0, sunC: 0xffa060, sunI: 0.55, lamps: true, shoulder: 0x4a4d55, skirt: 0x34363c, skirtBottom: -1, road: 0xb4b8c0, oil: true },
+  spiral: { sky: 0xeccfa4, g1: '#b07b4c', g2: '#a87449', tree: 0, trunk: 0, hill: 0xa86a42, count: 0, decor: 'none', hills: 'mesa', fog: [220, 900], hemiI: 0.8, sunC: 0xffe2b8, shoulder: 0x9a6a46, skirt: 0x8a5634, road: 0xd2c6ba, pit: { x: 0, z: 0, r: 152, y: 86 }, pitFloor: 0x6e4a32 },
   blizzard: { sky: 0xcfdde8, g1: '#f3f6f9', g2: '#e9eff4', tree: 0x2b5444, trunk: 0x4a3626, hill: 0xeef3f7, count: 320, decor: 'pine', snow: true, hills: 'cone', shoulder: 0xe4ebf1, skirt: 0xb9c6cf, fog: [110, 480] }
 };
 
@@ -218,7 +220,7 @@ function disposeGroup(g) {
 }
 
 const keepAll = () => true;
-const TRACK_TINT = {"cherry": "#ff9ec4", "jungle": "#3fae5a", "dunes": "#f2c46b", "icelake": "#9fe3ff", "sunset": "#ff8a5c", "volcano": "#ff4a1a", "galaxy": "#9a7bff", "neon": "#ff3df0", "green": "#5bd46a", "valley": "#e8b84a", "coast": "#39b6ff", "city": "#a8b3c7", "canyon": "#ff7a45", "blizzard": "#bfe6ff", "ridge": "#ff3b5c"};
+const TRACK_TINT = {"cherry": "#ff9ec4", "jungle": "#3fae5a", "dunes": "#f2c46b", "icelake": "#9fe3ff", "sunset": "#ff8a5c", "volcano": "#ff4a1a", "galaxy": "#9a7bff", "neon": "#ff3df0", "green": "#5bd46a", "valley": "#e8b84a", "coast": "#39b6ff", "city": "#a8b3c7", "canyon": "#ff7a45", "blizzard": "#bfe6ff", "ridge": "#ff3b5c", "foundry": "#ff7a1a", "spiral": "#e0a050"};
 const latOf = (lat, j) => typeof lat === 'function' ? lat(j) : lat;
 const segOk = (tr, i) => i < tr.N && (!tr.p2p || i < tr.N - 1);
 function ribbon(tr, latA, latB, y, vLen, mat, keep) {
@@ -274,17 +276,40 @@ function buildWorld(ti) {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
   for (let i = 0; i < tr.N; i++) { minX = Math.min(minX, tr.px[i]); maxX = Math.max(maxX, tr.px[i]); minZ = Math.min(minZ, tr.pz[i]); maxZ = Math.max(maxZ, tr.pz[i]); }
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400, 40, 40), new THREE.MeshLambertMaterial({ map: grass }));
-  ground.rotation.x = -Math.PI / 2; ground.position.set(cx, -0.15, cz); if (!th.noGround) group.add(ground);
+  let groundMat;
+  if (th.lavaGround) {
+    const lv = TEX.lava.clone(); lv.needsUpdate = true; lv.wrapS = lv.wrapT = THREE.RepeatWrapping; lv.repeat.set(70, 70);
+    groundMat = new THREE.MeshBasicMaterial({ map: lv, color: 0xb04a26 });
+  } else groundMat = new THREE.MeshLambertMaterial({ map: grass });
+  if (th.pit) {
+    // open-pit mine: ground sits at the rim with a round hole; terraced rock wall down to the floor
+    const P = th.pit, rimMat = new THREE.MeshLambertMaterial({ map: grass });
+    const rim = new THREE.Mesh(new THREE.RingGeometry(P.r, 1500, 96, 1), rimMat);
+    rim.rotation.x = -Math.PI / 2; rim.position.set(P.x, P.y - 0.15, P.z); group.add(rim);
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(P.r, P.r, P.y + 1, 96, 1, true), new THREE.MeshLambertMaterial({ color: th.skirt, side: THREE.BackSide }));
+    wall.position.set(P.x, P.y / 2 - 0.6, P.z); group.add(wall);
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(P.r, 96), new THREE.MeshLambertMaterial({ color: th.pitFloor }));
+    floor.rotation.x = -Math.PI / 2; floor.position.set(P.x, -0.15, P.z); group.add(floor);
+  }
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400, 40, 40), groundMat);
+  ground.rotation.x = -Math.PI / 2; ground.position.set(cx, -0.15, cz); if (!th.noGround && !th.pit) group.add(ground);
 
   const noGap = (a, b) => !tr.gapMask[a] && !tr.gapMask[b];
   const walled = (a, b) => noGap(a, b) && !tr.openMask[a] && !tr.openMask[b];
   const openOnly = (a, b) => noGap(a, b) && (tr.openMask[a] || tr.openMask[b]);
+  // one-sided open edges: sideOpen = +1 / -1 removes only that side's wall
+  const sideOff = (sg, a, b) => tr.sideOpen[a] === sg || tr.sideOpen[b] === sg;
+  const walledP = (a, b) => walled(a, b) && !sideOff(1, a, b), walledN = (a, b) => walled(a, b) && !sideOff(-1, a, b);
+  const openP = (a, b) => openOnly(a, b) || (noGap(a, b) && sideOff(1, a, b)), openN = (a, b) => openOnly(a, b) || (noGap(a, b) && sideOff(-1, a, b));
   // lateral offsets per track sample (constant on the classic tracks)
   const H = j => tr.halfA[j], nH = j => -tr.halfA[j], CB = j => tr.curbA[j], nCB = j => -tr.curbA[j];
   const WL = j => tr.wallA[j], nWL = j => -tr.wallA[j], WO = j => tr.wallA[j] + 0.5, nWO = j => -tr.wallA[j] - 0.5;
   group.add(ribbon(tr, H, nH, 0.02, 24, new THREE.MeshLambertMaterial({ map: TEX.road, color: th.road || 0xffffff }), noGap));
-  if (tr.def.ice) group.add(ribbon(tr, H, nH, 0.028, 24, new THREE.MeshLambertMaterial({ map: TEX.road, color: 0xbfe8ff, emissive: 0x16384a, transparent: true, opacity: 0.85 }), (a, b) => noGap(a, b) && tr.gripA[a] < 1 && tr.gripA[b] < 1));
+  if (tr.def.ice) {
+    const slick = th.oil ? new THREE.MeshLambertMaterial({ map: TEX.road, color: 0x24202a, emissive: 0x1a1030, transparent: true, opacity: 0.9 })   // oil
+      : new THREE.MeshLambertMaterial({ map: TEX.road, color: 0xbfe8ff, emissive: 0x16384a, transparent: true, opacity: 0.85 });              // ice
+    group.add(ribbon(tr, H, nH, 0.028, 24, slick, (a, b) => noGap(a, b) && tr.gripA[a] < 1 && tr.gripA[b] < 1));
+  }
   const curbMat = th.curb === 'neon' ? new THREE.MeshBasicMaterial({ map: TEX.curbNeon }) : new THREE.MeshLambertMaterial({ map: TEX.curb });
   group.add(ribbon(tr, CB, H, 0.03, 4, curbMat, noGap));
   group.add(ribbon(tr, nH, nCB, 0.03, 4, curbMat, noGap));
@@ -292,16 +317,17 @@ function buildWorld(ti) {
   group.add(ribbon(tr, WL, CB, 0.025, 10, shoulder, noGap));
   group.add(ribbon(tr, nCB, nWL, 0.025, 10, shoulder, noGap));
   const wallMat = new THREE.MeshLambertMaterial({ map: TEX.wall, side: THREE.DoubleSide });
-  group.add(wallMesh(tr, WL, 1.0, 8, wallMat, walled));
-  group.add(wallMesh(tr, nWL, 1.0, 8, wallMat, walled));
+  group.add(wallMesh(tr, WL, 1.0, 8, wallMat, walledP));
+  group.add(wallMesh(tr, nWL, 1.0, 8, wallMat, walledN));
   const capMat = new THREE.MeshLambertMaterial({ color: 0x222222, side: THREE.DoubleSide });
-  group.add(ribbon(tr, WO, WL, 1.0, 10, capMat, walled));
-  group.add(ribbon(tr, nWL, nWO, 1.0, 10, capMat, walled));
-  for (const lat of [WO, nWO]) group.add(wallMesh(tr, lat, 1.0, 8, capMat, walled));
+  group.add(ribbon(tr, WO, WL, 1.0, 10, capMat, walledP));
+  group.add(ribbon(tr, nWL, nWO, 1.0, 10, capMat, walledN));
+  group.add(wallMesh(tr, WO, 1.0, 8, capMat, walledP));
+  group.add(wallMesh(tr, nWO, 1.0, 8, capMat, walledN));
   if (tr.hasElev) {
     const skirtMat = new THREE.MeshLambertMaterial({ color: th.skirt || 0x9aa6ae, side: THREE.DoubleSide });
-    group.add(ribbon(tr, WO, WL, 0.025, 10, shoulder, openOnly));
-    group.add(ribbon(tr, nWL, nWO, 0.025, 10, shoulder, openOnly));
+    group.add(ribbon(tr, WO, WL, 0.025, 10, shoulder, openP));
+    group.add(ribbon(tr, nWL, nWO, 0.025, 10, shoulder, openN));
     for (const lat of [WO, nWO]) group.add(wallMesh(tr, lat, 0, 6, skirtMat, noGap, th.skirtBottom != null ? th.skirtBottom : -0.2));
     if (th.skirtBottom != null) group.add(ribbon(tr, nWO, WO, -0.6, 10, skirtMat, noGap));
     // broken-bridge faces at each gap
@@ -325,7 +351,7 @@ function buildWorld(ti) {
     for (const pd of tr.pads) group.add(ribbon(tr, 4.5 * tr.ws, -4.5 * tr.ws, 0.04, 4, padMat, (i) => i * tr.ds >= pd.a && i * tr.ds < pd.b));
     // snow poles along open (wall-less) edges
     const polePts = [];
-    for (let i = 0; i < tr.N; i += 9) if (tr.openMask[i] && !tr.gapMask[i]) for (const sg of [1, -1]) polePts.push([i, sg]);
+    for (let i = 0; i < tr.N; i += 9) if (!tr.gapMask[i]) for (const sg of [1, -1]) if (tr.openMask[i] || tr.sideOpen[i] === sg) polePts.push([i, sg]);
     if (polePts.length) {
       const pg = new THREE.CylinderGeometry(0.12, 0.12, 1.8, 6); pg.translate(0, 0.9, 0);
       const poles = new THREE.InstancedMesh(pg, th.space ? new THREE.MeshBasicMaterial({ color: 0x2fe8ff }) : new THREE.MeshLambertMaterial({ color: 0xd8342b }), polePts.length);
@@ -547,13 +573,13 @@ function buildWorld(ti) {
   // street lamps
   if (th.lamps) {
     const lp = [];
-    for (let i = 0; i < tr.N; i += 36) if (!tr.gapMask[i]) for (const sg of [1, -1]) lp.push([i, sg]);
+    for (let i = 0; i < tr.N; i += 36) if (!tr.gapMask[i] && !tr.openMask[i]) for (const sg of [1, -1]) lp.push([i, sg]);
     const poleG = new THREE.CylinderGeometry(0.15, 0.2, 6, 6); poleG.translate(0, 3, 0);
     const headG = new THREE.BoxGeometry(0.5, 0.35, 1.6);
     const poles = new THREE.InstancedMesh(poleG, new THREE.MeshLambertMaterial({ color: 0x2a2d3c }), lp.length);
     const heads = new THREE.InstancedMesh(headG, new THREE.MeshBasicMaterial({ color: 0xfff2c4 }), lp.length);
     lp.forEach(([i, sg], n) => {
-      const lat = sg * (tr.wall + 1.2), p = { x: tr.px[i] + tr.nx[i] * lat, z: tr.pz[i] + tr.nz[i] * lat };
+      const lat = sg * (tr.wallA[i] + 1.2), p = { x: tr.px[i] + tr.nx[i] * lat, z: tr.pz[i] + tr.nz[i] * lat };
       place(poles, n, p, 1, 1, 1, 0, 0, 0, tr.h[i]);
       const hp = { x: tr.px[i] + tr.nx[i] * (lat - sg * 1.2), z: tr.pz[i] + tr.nz[i] * (lat - sg * 1.2) };
       place(heads, n, hp, 1, 1, 1, 0, tr.ang[i], 0, tr.h[i] + 6);
@@ -609,7 +635,7 @@ function buildWorld(ti) {
       hh = 40 + r() * 70;
       m = new THREE.Mesh(new THREE.ConeGeometry(60 + r() * 50, hh, 5), hillMat);
     }
-    m.position.set(hx, hh / 2 - 2, hz);
+    m.position.set(hx, hh / 2 - 2 + (th.pit ? th.pit.y : 0), hz);
     m.rotation.y = r() * 3; group.add(m);
   }
   scene.add(group);
@@ -782,12 +808,14 @@ function defaultGhost(ti, laps, diff) {
 /* TAS ghosts: replayed from optimized plans in tas.js (generated once per track/laps, then cached) */
 const tasCache = {}, TAS_SKIN = { body: 'proto', wheel: 'neon', helmet: 'visor' }, TAS_COLOR = 0x8f6bff;
 function tasAvail(ti) { return !!(window.TAS_PLANS && window.TAS_PLANS[Core.TRACK_DEFS[ti].id]); }
+// a track can carry an extra plan tuned for one lap count ('foundry@5'); otherwise the main plan is used
+function tasPlanFor(ti, laps) { const id = Core.TRACK_DEFS[ti].id; return window.TAS_PLANS[id + '@' + laps] || window.TAS_PLANS[id]; }
 function tasGhost(ti, laps) {
   if (!tasAvail(ti)) return null;
   const key = ti + '_' + laps;
   if (!(key in tasCache)) {
     let g = null;
-    try { g = Core.makeTasGhost(ti, laps, window.TAS_PLANS[Core.TRACK_DEFS[ti].id]); } catch (e) { console.warn('TAS', e); }
+    try { g = Core.makeTasGhost(ti, laps, tasPlanFor(ti, laps)); } catch (e) { console.warn('TAS', e); }
     if (g) Object.assign(g, { color: TAS_COLOR, skin: TAS_SKIN, owner: 'TAS', trackId: Core.TRACK_DEFS[ti].id, laps });
     tasCache[key] = g;
   }
@@ -971,6 +999,8 @@ function press(k, on) {
 }
 window.addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') {
+    // Korean IME: Enter while a syllable is still being composed fires twice (and re-sends the last letter) -- skip that one
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.code === 'Enter' && e.target.id === 'codeIn') $('btnJoin').click();
     if (e.code === 'Enter' && e.target.id === 'chatIn') sendChat();
     if (e.code === 'Enter' && e.target.id === 'roomTitle') e.target.blur();
@@ -1043,7 +1073,7 @@ function startRace() {
   const s = save.settings;
   if (!world || world.ti !== s.track) buildWorld(s.track);
   const ta = s.mode === 'ta';
-  const tasPlan = s.diff === 3 && tasAvail(s.track) ? Core.unpackTasPlan(window.TAS_PLANS[Core.TRACK_DEFS[s.track].id]) : null;
+  const tasPlan = s.diff === 3 && tasAvail(s.track) ? Core.unpackTasPlan(tasPlanFor(s.track, effLaps(s.track, s.laps))) : null;
   race = Core.createRace({ track: s.track, laps: s.laps, diff: s.diff, seed: (Math.random() * 1e9) | 0, playerHex: Profile.colorHex(Profile.data.equip.color), solo: ta, record: true, teams: !ta && s.teamMode, tasPlan });
   race.playerSkin = Profile.skin(); race.pJumps = 0;
   demo = null;
@@ -1226,10 +1256,10 @@ renderToggles();
 
 
 /* ---------- friend battle (P2P) ---------- */
-const NET_VER = 9, PEER_PREFIX = 'rkr-race-v1-', CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', MAX_P = 8;
+const NET_VER = 11, PEER_PREFIX = 'rkr-race-v1-', CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', MAX_P = 8;
 const NET = { active: false, peer: null, host: false, conns: new Map(), conn: null, pid: 0, players: [], code: '',
   track: 0, laps: 3, nextPid: 1, inRace: false, proxies: new Map(), sendAcc: 0, pingAcc: 0, rtt: new Map(),
-  retireT: -1, fins: new Map(), sentFin: false, raceLaps: 3 };
+  retireT: -1, fins: new Map(), sentFin: false, raceLaps: 3, gen: 0 };
 let netMenuOpen = false;
 function globalRace() { return race; }
 function peerOpts() {
@@ -1485,10 +1515,18 @@ function peerErrText(err) {
   if (t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed') return '연결 서버에 접속하지 못했습니다. 인터넷 연결을 확인해 주세요.';
   return '연결 오류가 발생했습니다. (' + (t || 'unknown') + ')';
 }
+// shut a peer down for good: drop our listeners first, otherwise its 'disconnected' handler
+// fires during destroy() and reconnects it, leaving a zombie that breaks the next room
+function killPeer(peer) {
+  if (!peer) return;
+  try { peer.removeAllListeners(); } catch (e) { }
+  try { peer.destroy(); } catch (e) { }
+}
 function netCleanup() {
-  for (const c of NET.conns.values()) try { c.close(); } catch (e) { }
-  if (NET.conn) try { NET.conn.close(); } catch (e) { }
-  if (NET.peer) try { NET.peer.destroy(); } catch (e) { }
+  NET.gen++;   // anything still pending from the old room is ignored from here on
+  for (const c of NET.conns.values()) try { c.removeAllListeners(); c.close(); } catch (e) { }
+  if (NET.conn) try { NET.conn.removeAllListeners(); NET.conn.close(); } catch (e) { }
+  killPeer(NET.peer);
   for (const px of NET.proxies.values()) if (px.view) disposeGroup(px.view.g);
   Object.assign(NET, { active: false, peer: null, host: false, conn: null, pid: 0, players: [], code: '', inRace: false, retireT: -1, sentFin: false });
   NET.conns.clear(); NET.proxies.clear(); NET.rtt.clear(); NET.fins.clear();
@@ -1501,11 +1539,16 @@ async function netHost() {
   $('btnHost').disabled = true; $('btnJoin').disabled = true;
   setStatus('방을 만드는 중...');
   try { await loadPeerLib(); } catch (e) { return netFail('네트워크 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'); }
+  netCleanup();
+  const gen = NET.gen;
   NET.track = save.settings.track; NET.laps = save.settings.laps;
   const attempt = n => {
+    if (gen !== NET.gen) return;
     const code = genCode();
     const peer = new Peer(PEER_PREFIX + code, peerOpts());
+    NET.peer = peer;   // so leaving before it opens still shuts it down
     peer.on('open', () => {
+      if (gen !== NET.gen || peer.destroyed) return;
       Object.assign(NET, { active: true, peer, host: true, code, pid: 0, nextPid: 1 });
       NET.players = [{ pid: 0, name: myNick(), color: Profile.data.equip.color, ready: true, team: 0, skin: cleanSkin(Profile.skin()), owned: Profile.ownedColors() }];
       NET.teamMode = false;
@@ -1514,15 +1557,20 @@ async function netHost() {
       showRoom(); broadcastLobby();
     });
     peer.on('error', err => {
-      if (err.type === 'unavailable-id' && n < 5) { try { peer.destroy(); } catch (e) { } attempt(n + 1); }
+      if (gen !== NET.gen) return;
+      if (err.type === 'unavailable-id' && n < 5) { killPeer(peer); attempt(n + 1); }
       else if (!NET.active || err.type !== 'peer-unavailable') netFail(peerErrText(err));
     });
     peer.on('connection', conn => {
+      if (gen !== NET.gen) { try { conn.close(); } catch (e) { } return; }
       conn.on('data', m => hostOnMsg(conn, m));
       conn.on('close', () => hostDrop(conn));
       conn.on('error', () => hostDrop(conn));
     });
-    peer.on('disconnected', () => { try { if (!peer.destroyed) peer.reconnect(); } catch (e) { } });
+    // lost the signalling server: try to get back (only while this is still our room)
+    peer.on('disconnected', () => setTimeout(() => {
+      try { if (gen === NET.gen && !peer.destroyed && peer.disconnected) peer.reconnect(); } catch (e) { }
+    }, 1000));
   };
   attempt(0);
 }
@@ -1598,17 +1646,20 @@ async function netJoin() {
   $('btnHost').disabled = true; $('btnJoin').disabled = true;
   setStatus('방에 연결하는 중...');
   try { await loadPeerLib(); } catch (e) { return netFail('네트워크 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'); }
+  netCleanup();
+  const gen = NET.gen;
   const peer = new Peer(undefined, peerOpts());
   NET.peer = peer;
   peer.on('open', () => {
+    if (gen !== NET.gen || peer.destroyed) return;
     const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' });
     NET.conn = conn;
-    const to = setTimeout(() => { if (!conn.open) netFail('연결하지 못했습니다. 서로 다른 네트워크(특히 모바일 데이터)에서는 직접 연결이 막힐 수 있습니다.'); }, 15000);
-    conn.on('open', () => { clearTimeout(to); $('chatLog').innerHTML = ''; conn.send({ t: 'hello', name: myNick(), color: Profile.data.equip.color, skin: Profile.skin(), owned: Profile.ownedColors(), ver: NET_VER }); });
-    conn.on('data', m => guestOnMsg(m));
-    conn.on('close', () => { if (NET.active || NET.conn === conn) netClosed('방장과의 연결이 끊어졌습니다.'); });
+    const to = setTimeout(() => { if (NET.conn === conn && !conn.open) netFail('연결하지 못했습니다. 서로 다른 네트워크(특히 모바일 데이터)에서는 직접 연결이 막힐 수 있습니다.'); }, 15000);
+    conn.on('open', () => { clearTimeout(to); if (NET.conn !== conn) return; $('chatLog').innerHTML = ''; conn.send({ t: 'hello', name: myNick(), color: Profile.data.equip.color, skin: Profile.skin(), owned: Profile.ownedColors(), ver: NET_VER }); });
+    conn.on('data', m => { if (NET.conn === conn) guestOnMsg(m); });
+    conn.on('close', () => { if (NET.conn === conn) netClosed('방장과의 연결이 끊어졌습니다.'); });
   });
-  peer.on('error', err => netFail(peerErrText(err)));
+  peer.on('error', err => { if (gen === NET.gen) netFail(peerErrText(err)); });
 }
 function guestOnMsg(m) {
   if (!m || typeof m !== 'object') return;
@@ -2723,7 +2774,7 @@ $('acLogout').onclick = async () => { await Api.logout(); renderAccount(); rende
 $('acRecOk').onclick = () => { closePanel('account'); };
 $('acRecCopy').onclick = () => { const t = $('acRecCode').textContent; if (navigator.clipboard) navigator.clipboard.writeText(t).catch(() => { }); $('acRecCopy').textContent = '복사됨'; };
 $('rkClose').onclick = () => closePanel('ranking');
-['acUser', 'acPass', 'acPass2', 'acRec'].forEach(id => $(id).addEventListener('keydown', e => { if (e.code === 'Enter') submitAccount(); }));
+['acUser', 'acPass', 'acPass2', 'acRec'].forEach(id => $(id).addEventListener('keydown', e => { if (e.code === 'Enter' && !e.isComposing && e.keyCode !== 229) submitAccount(); }));
 Profile.onChange(() => { renderPbar(); if (garageOpen) renderGarage(); });
 (function migrateLegacyColor() {
   let had = false; try { had = !!localStorage.getItem('racing_profile_guest'); } catch (e) { }
